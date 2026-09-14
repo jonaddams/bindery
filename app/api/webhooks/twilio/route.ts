@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addComment } from '@/lib/dws-comments';
+import { addComment, DwsRequestError } from '@/lib/dws-comments';
 import {
   looksLikeVerificationCode,
   type RedeemResult,
@@ -289,6 +289,15 @@ export async function POST(request: Request) {
     // failed write turns the idempotency guard into a black hole: Twilio retries,
     // the claim is still there, the retry is ignored, and the reply is lost.
     await prisma.inboundSms.delete({ where: { providerMessageId } }).catch(() => {});
+
+    // A 500 here is a request to retry, and that is right for a backend that is
+    // briefly unwell. It is wrong for a thread that no longer exists: the retry
+    // fails identically, for ever, and the sender is met with silence. So a
+    // permanently-gone thread is answered like no thread at all — which is
+    // what it is, from the sender's point of view.
+    if (error instanceof DwsRequestError && error.permanent) {
+      return twiml(NO_THREAD_MESSAGE);
+    }
 
     return NextResponse.json(
       { error: 'Could not add the comment', detail: String(error) },

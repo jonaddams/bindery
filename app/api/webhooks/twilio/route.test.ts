@@ -22,7 +22,13 @@ vi.mock('@/lib/phone-verification', () => ({
   redeemPhoneVerification: (...a: unknown[]) => redeemPhoneVerification(...a),
   looksLikeVerificationCode: (...a: unknown[]) => looksLikeVerificationCode(...a),
 }));
-vi.mock('@/lib/dws-comments', () => ({ addComment: (...a: unknown[]) => addComment(...a) }));
+// Keeps the real DwsRequestError: the route distinguishes a permanently-gone
+// thread from a transient fault with `instanceof`, so a hand-rolled stand-in
+// would pass the test while failing in production.
+vi.mock('@/lib/dws-comments', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/dws-comments')>('@/lib/dws-comments');
+  return { ...actual, addComment: (...a: unknown[]) => addComment(...a) };
+});
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     user: {
@@ -38,6 +44,7 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 
+import { DwsRequestError } from '@/lib/dws-comments';
 import { REGISTERED_MESSAGE } from '@/lib/sms-program';
 
 const { POST } = await import('@/app/api/webhooks/twilio/route');
@@ -70,6 +77,68 @@ beforeEach(() => {
   createInboundSms.mockResolvedValue({});
   updateInboundSms.mockResolvedValue({});
   addComment.mockResolvedValue({ commentId: 'comment_1' });
+});
+
+describe('when the thread a reply belongs to is gone', () => {
+  const withNotifiedMention = () => {
+    // The route calls .catch() on the delete, so it has to be a promise.
+    deleteInboundSms.mockResolvedValue({});
+    findFirstUser.mockResolvedValue({ id: 'user_1', name: 'Jon', email: 'jon@nutrient.io' });
+    findFirstMention.mockResolvedValue({
+      comment: {
+        thread: {
+          id: 'thread_1',
+          rootAnnotationId: 'ann_1',
+          document: { documentEngineId: 'dws_1' },
+        },
+      },
+    });
+  };
+
+  // Found in production on 2026-09-14. A stored thread whose root annotation had
+  // been deleted from DWS made addComment throw, and the route answered 500 to
+  // make Twilio retry. But a 404 can never succeed on a retry, so Twilio retried,
+  // failed again, and the sender got silence for ever.
+  it('tells the sender rather than failing forever, when DWS says the thread is gone', async () => {
+    withNotifiedMention();
+    addComment.mockRejectedValue(
+      new DwsRequestError({ path: '/comments', status: 404, raw: 'Resource not found.' })
+    );
+
+    const response = await POST(post(inboundReply));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('No recent comment thread');
+  });
+
+  it('releases the claim so the number is not stuck', async () => {
+    withNotifiedMention();
+    addComment.mockRejectedValue(
+      new DwsRequestError({ path: '/comments', status: 404, raw: 'gone' })
+    );
+
+    await POST(post(inboundReply));
+
+    expect(deleteInboundSms).toHaveBeenCalled();
+  });
+
+  // The opposite case must keep its retry: a transient fault usually succeeds on
+  // the second attempt, and answering 200 would throw the message away.
+  it('still asks Twilio to retry when DWS is merely unwell', async () => {
+    withNotifiedMention();
+    addComment.mockRejectedValue(
+      new DwsRequestError({ path: '/comments', status: 503, raw: 'unwell' })
+    );
+
+    expect((await POST(post(inboundReply))).status).toBe(500);
+  });
+
+  it('still asks Twilio to retry when the failure carries no status at all', async () => {
+    withNotifiedMention();
+    addComment.mockRejectedValue(new Error('socket hang up'));
+
+    expect((await POST(post(inboundReply))).status).toBe(500);
+  });
 });
 
 describe('the TwiML reply is well-formed XML', () => {
