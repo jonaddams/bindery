@@ -80,6 +80,52 @@ describe('signature', () => {
     expect(redeemPhoneVerification).not.toHaveBeenCalled();
     expect(addComment).not.toHaveBeenCalled();
   });
+
+  it('verifies against the request URL when no override is configured', async () => {
+    vi.stubEnv('TWILIO_WEBHOOK_URL', undefined);
+
+    await POST(post(inboundReply));
+
+    expect(verifyTwilioSignature.mock.calls[0][0].url).toBe(
+      'https://example.com/api/webhooks/twilio'
+    );
+  });
+
+  it('verifies against the override when one is configured', async () => {
+    vi.stubEnv('TWILIO_WEBHOOK_URL', 'https://proxied.example/api/webhooks/twilio');
+
+    await POST(post(inboundReply));
+
+    expect(verifyTwilioSignature.mock.calls[0][0].url).toBe(
+      'https://proxied.example/api/webhooks/twilio'
+    );
+  });
+
+  // `.env.production` documents this name with an empty assignment, and Next
+  // loads that file in the production runtime — so the variable arrives as `''`,
+  // never `undefined`. `??` only falls back on null/undefined, so the blank won
+  // and every inbound message was verified against an empty string. That is not
+  // a degraded check: the HMAC simply never matches, so production answered 403
+  // to every STOP, HELP, verification code and reply.
+  it('treats a present-but-blank override as unset rather than signing an empty URL', async () => {
+    vi.stubEnv('TWILIO_WEBHOOK_URL', '');
+
+    await POST(post(inboundReply));
+
+    expect(verifyTwilioSignature.mock.calls[0][0].url).toBe(
+      'https://example.com/api/webhooks/twilio'
+    );
+  });
+
+  it('ignores an override that is only whitespace', async () => {
+    vi.stubEnv('TWILIO_WEBHOOK_URL', '   ');
+
+    await POST(post(inboundReply));
+
+    expect(verifyTwilioSignature.mock.calls[0][0].url).toBe(
+      'https://example.com/api/webhooks/twilio'
+    );
+  });
 });
 
 describe('registration', () => {

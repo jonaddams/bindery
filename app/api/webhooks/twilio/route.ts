@@ -83,8 +83,26 @@ const twiml = (message?: string): NextResponse =>
  * The URL Twilio signed. It signs the address it was configured with, so behind a
  * proxy the request's own view of the URL can differ; `TWILIO_WEBHOOK_URL` pins
  * it when they disagree.
+ *
+ * **A blank value must be treated as unset, and `??` does not do that.**
+ * `.env.production` documents this name with an empty assignment, and Next loads
+ * that file in the production runtime, so the variable arrives as `''` rather
+ * than `undefined`. Nullish coalescing kept the blank, and the signature was
+ * then computed over an empty string — which does not weaken the check, it
+ * breaks it outright: the HMAC never matches, so production answered 403 to
+ * every inbound message. STOP, HELP, verification codes and replies all failed
+ * silently, and from outside the webhook looked like it was correctly rejecting
+ * forgeries.
+ *
+ * This is the same failure that took out every document route in #19. The rule
+ * it cost twice to learn: when a variable is documented by empty assignment,
+ * fall back on falsiness, not on nullishness.
  */
-const signedUrl = (request: Request): string => process.env.TWILIO_WEBHOOK_URL ?? request.url;
+const signedUrl = (request: Request): string => {
+  const configured = process.env.TWILIO_WEBHOOK_URL?.trim();
+
+  return configured ? configured : request.url;
+};
 
 export async function POST(request: Request) {
   const form = new URLSearchParams(await request.text());
