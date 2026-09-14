@@ -119,6 +119,23 @@ describe('Talking to DWS', () => {
     await expect(createCommentThread(THREAD_ROOT)).rejects.toThrow(/422/);
   });
 
+  // A caller has to tell "the thread is gone" from "DWS is briefly unwell",
+  // because one can never succeed on a retry and the other usually does.
+  // Reading that out of the message string would be a parser of our own prose.
+  it('carries the HTTP status on the error, so a caller can tell gone from unwell', async () => {
+    mockFetch(jsonResponse({ error: 'Resource not found.' }, 404));
+
+    await expect(createCommentThread(THREAD_ROOT)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('marks a vanished resource as permanent and a server fault as not', async () => {
+    mockFetch(jsonResponse({ error: 'Resource not found.' }, 404));
+    await expect(createCommentThread(THREAD_ROOT)).rejects.toMatchObject({ permanent: true });
+
+    mockFetch(jsonResponse({ error: 'oops' }, 503));
+    await expect(createCommentThread(THREAD_ROOT)).rejects.toMatchObject({ permanent: false });
+  });
+
   it('refuses to run without an API key', async () => {
     vi.stubEnv('NUTRIENT_API_KEY', '');
     vi.stubEnv('NUTRIENT_VIEWER_API_KEY', '');

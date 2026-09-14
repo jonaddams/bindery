@@ -47,6 +47,38 @@ type DwsAnnotationResponse = {
   content?: { isCommentThreadRoot?: boolean } | null;
 };
 
+/**
+ * A DWS request that came back not-ok, carrying enough to decide what to do next.
+ *
+ * The status matters because callers have to tell **gone** from **briefly
+ * unwell**, and those want opposite handling: a 404 can never succeed on a
+ * retry, while a 503 usually succeeds on the next attempt. Before this the
+ * status was only in the message string, so the one caller that needed the
+ * distinction would have had to parse our own prose to find it.
+ *
+ * This is not hypothetical. A stored comment thread whose root annotation had
+ * been deleted from DWS made the inbound SMS webhook answer 500 to trigger a
+ * Twilio retry — and since the annotation was gone for good, every retry failed
+ * the same way and the sender simply never heard back.
+ */
+export class DwsRequestError extends Error {
+  readonly status: number;
+
+  /** True when retrying cannot help: the resource is gone or the request is bad. */
+  readonly permanent: boolean;
+
+  constructor(options: { path: string; status: number; raw: string }) {
+    super(`DWS request to ${options.path} failed: ${options.status} - ${options.raw}`);
+
+    this.name = 'DwsRequestError';
+    this.status = options.status;
+    // 404/410 only. A 401 or 403 is also unretryable, but it means our key is
+    // wrong — an outage worth surfacing loudly rather than reporting to a user
+    // as though their thread had vanished.
+    this.permanent = options.status === 404 || options.status === 410;
+  }
+}
+
 const request = async (path: string, init: RequestInit = {}): Promise<unknown> => {
   const response = await fetch(`${DWS_BASE_URL}${path}`, {
     ...init,
@@ -62,7 +94,7 @@ const request = async (path: string, init: RequestInit = {}): Promise<unknown> =
   const raw = await response.text();
 
   if (!response.ok) {
-    throw new Error(`DWS request to ${path} failed: ${response.status} - ${raw}`);
+    throw new DwsRequestError({ path, status: response.status, raw });
   }
 
   return raw ? JSON.parse(raw) : null;
