@@ -12,7 +12,20 @@
 // and it fails badly rather than quietly: an unrecognised keyword falls through
 // to the reply path and gets posted into a document as a comment.
 const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT', 'REVOKE'];
-const START_WORDS = ['START', 'YES', 'UNSTOP'];
+
+// START, YES and UNSTOP are what carriers mandate and what this program would
+// have chosen. VERIFY and VERIFICATION are here because the campaign actually
+// files *them* as its opt-in keywords — Twilio's placeholder text went in
+// unedited on the third submission — and that cannot be corrected: a campaign
+// may only be updated while it is FAILED, and this one is VERIFIED, so approval
+// itself closed the edit window. Changing it means deleting and re-registering,
+// which restarts vetting.
+//
+// So the code is reconciled to the filing instead. Without this, a carrier
+// reviewer following the filing's own instructions would text VERIFY, get no
+// confirmation, and silently post a comment into a document.
+const START_WORDS = ['START', 'YES', 'UNSTOP', 'VERIFY', 'VERIFICATION'];
+
 const HELP_WORDS = ['HELP', 'INFO'];
 
 export type SmsKeyword = 'stop' | 'start' | 'help';

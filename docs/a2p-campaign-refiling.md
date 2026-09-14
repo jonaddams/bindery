@@ -244,10 +244,34 @@ mobile-originated answer from this document verbatim, and all five
 `message_samples` are byte-identical to the constants in `lib/sms-program.ts`.
 
 Three secondary fields, however, still hold Twilio's generic placeholder text —
-the same fault class that sank the first submission. They are not editable while
-the campaign is `IN_PROGRESS`; Twilio's edit-and-retry applies to a `FAILED`
-campaign. **Fix all three in the same edit window**, whether that window is a
-rejection or a post-approval edit:
+the same fault class that sank the first submission.
+
+> **There is no edit window, and there never will be. Corrected 2026-09-14.**
+> This section used to say to fix all three "whether that window is a rejection
+> or a post-approval edit". A post-approval edit does not exist. Attempting the
+> update against the live API returns:
+>
+> ```
+> Campaign update is allowed only for FAILURE state(s).
+> It is not allowed in the current state SUCCESS
+> ```
+>
+> Twilio permits a campaign update only while the campaign is `FAILED`. Approval
+> is precisely what closes the window, so "wait for the next edit window" was
+> waiting for something that cannot arrive. The only route to changing these
+> fields is deleting and re-registering the campaign, which restarts vetting and
+> risks a fresh vetting fee.
+>
+> **What was done instead:** the code was reconciled to the filing for the one
+> row that had teeth. `VERIFY` and `VERIFICATION` are now honoured as opt-in
+> keywords by `classifyKeyword`, so the filing's claim is true and a reviewer
+> texting `VERIFY` gets an opt-in confirmation rather than silently posting a
+> comment into a document. The other two rows are paperwork mismatches with no
+> behavioural consequence and are left alone — `help_message` in particular
+> cannot be reconciled from this side, because the filing contradicts its own
+> sample #3 and our HELP reply is the better text.
+
+The three, for the record:
 
 | Field | Filed | Must become |
 | --- | --- | --- |
@@ -259,12 +283,14 @@ rejection or a post-approval edit:
 `FILED_OPT_IN_KEYWORDS`, `FILED_OPT_IN_MESSAGE` and `FILED_HELP_MESSAGE`, so
 copy them from there rather than retyping.
 
-The keyword row is the one with teeth. The filing claims the program honours
-`VERIFY` and `VERIFICATION`; `classifyKeyword` returns `null` for both, and
-`a2p-filing.test.ts` asserts that it does. An unrecognised keyword does not fail
-politely — it falls through to the reply path and is posted into a document as a
-comment. So a reviewer who texts `VERIFY` gets no opt-in confirmation and
-silently writes a comment somewhere.
+~~The keyword row is the one with teeth.~~ **Closed 2026-09-14 from the code
+side.** The filing claims the program honours `VERIFY` and `VERIFICATION`, and
+`classifyKeyword` now does. An unrecognised keyword does not fail politely — it
+falls through to the reply path and is posted into a document as a comment — so
+until this was fixed, a reviewer who texted `VERIFY` got no opt-in confirmation
+and silently wrote a comment somewhere. `a2p-filing.test.ts` previously asserted
+that gap deliberately, on the expectation that the filing would be corrected;
+it now asserts the opposite.
 
 The `help_message` row makes the filing contradict itself: sample #3 in the same
 submission is the real HELP reply, so the form gives two different answers to
