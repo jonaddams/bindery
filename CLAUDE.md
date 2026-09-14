@@ -1484,6 +1484,20 @@ example without running it.
   body: no job id, no polling, no webhook. Every asynchronous thing about a job
   in this app is therefore ours, which is what `DocumentJob` and
   `lib/job-runner.ts` exist for. Limits: 100 MB per file, 500 MB per request.
+- **Verified in production on 2026-09-14**, by redacting a real document through
+  the UI. Worth recording because two of the design's claims were until then
+  only asserted:
+  - **`after()` really does run on Vercel, and promptly.** The job was created
+    at `17:39:08.326` and claimed at `17:39:08.342` — **16 ms**. The cron sweep
+    would have shown a gap of up to ten minutes, so the inline runner is doing
+    the work and the sweep is genuinely only a backstop.
+  - **The conditional claim holds:** `attempts = 1`. Exactly one runner won,
+    which is what stops a billed call being made twice.
+  - Whole job, download through re-upload: **4.7 seconds**.
+  - **The output grew from 75,730 to 115,604 bytes**, about 50%. That is the
+    reassuring direction: `applyRedactions` rewrites content streams rather than
+    drawing over them, so a real removal *adds* structure. Output roughly equal
+    to input would suggest the text had merely been covered.
 
 ## `.env.production` documents by empty assignment, and that is a trap
 
@@ -1526,8 +1540,19 @@ Two consequences worth carrying:
   in the checkout it was created in. Every Prisma CLI command then fails with
   "the `datasource.url` property is required", which reads like a
   `prisma.config.ts` problem and is not. Copy `.env.local` into the worktree.
-  (This is a sibling of the known "a worktree gets its own generated Prisma
-  client" gotcha.)
+  `.vercel/` is gitignored for the same reason, and its absence makes every
+  `vercel` command fail with `not_linked`.
+- **After merging schema work back, regenerate in the main checkout too.** The
+  known gotcha is that a worktree gets its own generated Prisma client; the
+  mirror of it is that the *main* checkout's client is then stale, and pulling
+  the merge does not refresh it — `postinstall` only runs on install. `pnpm
+  typecheck` fails with `Property 'documentJob' does not exist on type
+  'PrismaClient'`, which reads as though the merge lost the schema change. It
+  did not. Run `pnpm prisma generate`.
+
+  **`pnpm test` does not catch this**, because the tests mock `@/lib/prisma` and
+  never touch the generated client. Only `typecheck` sees it — another instance
+  of the rule that `pnpm pre-commit` is the real gate, not bare `pnpm test`.
 - **Prisma wanted to `DROP DEFAULT` on three BetterAuth columns in every
   migration.** The BetterAuth migration had to add `accounts.updated_at`,
   `sessions.updated_at` and `verification.updated_at` with
@@ -1833,14 +1858,31 @@ just the ones belonging to your change. Running it from a feature worktree
 applies that feature's migrations too — which is how you would put a BetterAuth
 schema onto a production still running NextAuth code.
 
+### Migrate first, then deploy
+
+**For an additive change, apply the migration before the deploy, not after.**
+Between a merge and its migration, production runs a Prisma client that knows
+about columns the database does not have — and Prisma selects every scalar
+column for a bare `findUnique`/`findFirst`, so any such query throws `P2022`
+even when nothing in the request mentions the new field.
+
+`document_jobs` merged at 11:52 on 2026-09-14 and was migrated at 12:32, leaving
+a 40-minute window of exactly that shape. It did not bite, for two reasons that
+were luck rather than design: the document list route names its columns in an
+explicit `select`, and nothing reaches a new table unless someone calls the new
+routes. A bare `findFirst` on a single document would have thrown.
+
+The reverse order is safe for an additive migration precisely because it is
+additive — a column nothing reads yet harms nothing.
+
 **The recipe that used to be written here did not work, and worse, it produced
 output that looked like proof of the opposite.** Corrected 2026-09-03 while
 applying the BetterAuth migration. Two things it got wrong:
 
-1. **`vercel env pull --environment=production` cannot retrieve the database
-   URL.** It yields a ~1.2 KB file containing only `VERCEL_OIDC_TOKEN`; the Neon
-   integration variables and every Sensitive-marked secret are absent. So
-   sourcing that file leaves no `DATABASE_*` set at all.
+1. ~~**`vercel env pull --environment=production` cannot retrieve the database
+   URL.**~~ **No longer true — see "Pulling the URL" below.** It was true as
+   written on 2026-09-03; on 2026-09-14 the same command returned every
+   `DATABASE_*` variable with real values.
 2. **A local `.env.local` overrides whatever you sourced.** `prisma.config.ts`
    calls `process.loadEnvFile('.env')` then `('.env.local')` *inside the config
    file*, which runs after the shell environment is built. So the old claim that
@@ -1851,19 +1893,49 @@ true of the local database, false of production, which was one migration behind.
 That reads as "production is fully migrated" and would have authorised deploying
 BetterAuth onto an unmigrated production.
 
-So the connection string has to be copied by hand, from the Vercel dashboard
-(`DATABASE_POSTGRES_URL_NON_POOLING` is type `Config`, so its value is viewable)
-or from the Neon console. Use a worktree with **no `.env`**, and write a
-`.env.local` holding *only* that URL, so nothing can override it. Copy the URL
-to the clipboard first to keep it out of shell history:
+### Pulling the URL
+
+**Corrected 2026-09-14, while applying the `document_jobs` migration.**
+`vercel env pull` *does* retrieve the database URL. The `DATABASE_*` variables
+the Neon integration creates are type **`Config`**, not `Secret`, and only
+`Secret` values are withheld — the CLI says so plainly as it writes the file:
+
+```
+! 17 Secret values cannot be pulled from the `production` Environment.
+  Wrote "[SENSITIVE]" as placeholders for the remaining values
+```
+
+So the hand-copy-from-the-dashboard step is no longer needed. What *is* needed
+is the project link: `.vercel/` is gitignored, so a fresh worktree is not linked
+and `vercel env pull` fails with `not_linked` — which reads like an auth problem
+and is not. Copy `.vercel/` in first.
+
+The rule about which secrets you can and cannot pull is worth keeping in mind
+generally: `CRON_SECRET` and the API keys come back as `[SENSITIVE]`, so they
+cannot be read back this way at all.
+
+### The recipe
+
+Use a worktree with **no `.env` and no `.env.local`**, and write a `.env.local`
+holding *only* the database URL, so nothing can override it. A detached worktree
+at `main` is the safest shape — it cannot be confused with a feature branch, and
+it keeps your own `.env.local` (which points at localhost) well out of the way:
 
 ```bash
-git switch main
-printf 'DATABASE_POSTGRES_URL_NON_POOLING=%s\n' "$(pbpaste)" > .env.local
+git worktree add --detach ../migrate-prod main
+cd ../migrate-prod
+cp -R <main checkout>/.vercel .          # else: not_linked
+pnpm install --frozen-lockfile           # a fresh worktree has no node_modules
+vercel env pull .env.pulled --environment=production --yes
+grep '^DATABASE_POSTGRES_URL_NON_POOLING=' .env.pulled > .env.local
+rm -f .env.pulled                        # it holds every other Config value too
 pnpm db:status    # confirm the datasource line AND the pending list
 pnpm db:migrate
-rm -f .env.local
+rm -f .env.local  # do not leave a production credential on disk
 ```
+
+`.env.production` is tracked and so is always present in a worktree. It does not
+matter: `prisma.config.ts` loads `.env` and `.env.local` only.
 
 **Read the datasource line that `db:status` prints — do not skip it.** It is the
 only thing that tells you which database answered:
