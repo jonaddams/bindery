@@ -1595,19 +1595,36 @@ Two consequences worth carrying:
   Opt-Out,** so `smsOptedOutAt` reflects reality and the notifier stops queuing
   sends Twilio would otherwise silently drop. Keyword matching is whole-message
   (STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/QUIT/**OPTOUT**/**REVOKE** to opt out;
-  START/YES/UNSTOP to opt back in; HELP/INFO for help), not substring, and it is
+  START/YES/UNSTOP/VERIFY/VERIFICATION to opt back in; HELP/INFO for help), not substring, and it is
   checked before the verification-code check so a STOP from an otherwise-valid
   sender still opts them out rather than being swallowed as a reply attempt.
   `lib/sms-keywords.ts` is the authority — this list was previously missing
   OPTOUT and REVOKE, and an out-of-date copy here is how a wrong list gets filed
   with the campaign.
-- **The opt-in keywords are START/YES/UNSTOP, not VERIFY.** Texting a
-  verification *code* is how a new number registers; there is no keyword for it.
-  The campaign's third submission was nearly filed claiming `VERIFY,VERIFICATION`
-  as opt-in keywords, which the code does not handle at all — and an
-  unrecognised keyword does not fail politely, it falls through to the reply path
-  and gets **posted into a document as a comment**. `lib/sms-keywords.ts` warns
-  about exactly this in its header.
+- **VERIFY and VERIFICATION are opt-in keywords, and that is a concession, not a
+  design.** Texting a verification *code* is how a new number registers; there is
+  no keyword for it, and START/YES/UNSTOP are what carriers mandate and what this
+  program would have chosen. But the campaign's third submission went in holding
+  Twilio's placeholder text, so `VERIFY,VERIFICATION` are what is **actually
+  filed** as the opt-in keywords.
+
+  **That filing cannot be corrected.** Attempting the update returns
+  `Campaign update is allowed only for FAILURE state(s). It is not allowed in the
+  current state SUCCESS` — Twilio permits an update only while a campaign is
+  `FAILED`, so approval is exactly what closed the window, and "fix it in the
+  next edit window" (which `docs/a2p-campaign-refiling.md` used to advise) was
+  waiting for something that cannot arrive. The only alternative is deleting and
+  re-registering, which restarts vetting.
+
+  So on 2026-09-14 the **code was reconciled to the filing**: `classifyKeyword`
+  honours both words. Without that, a carrier reviewer following the filing's own
+  instructions would text `VERIFY`, get no confirmation, and — because an
+  unrecognised keyword falls through to the reply path — silently **post a
+  comment into a document**.
+
+  The general lesson, which cost an approval to learn: **check what a filing
+  actually says before it is approved, because afterwards the code is the only
+  side you can still move.**
 - **The webhook is deliberately silent on STOP.** It records `smsOptedOutAt` and
   replies with nothing, because Twilio sends the carrier-mandated confirmation
   itself and a message of our own to somebody who just left is what they asked

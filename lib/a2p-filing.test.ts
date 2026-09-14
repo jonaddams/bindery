@@ -44,7 +44,32 @@ const FILED_OPT_IN_MESSAGE = "Bindery: You're opted back in. Reply HELP for help
 const FILED_HELP_MESSAGE =
   'Bindery: Mention notifications for your documents. Reply to a notification to comment. Msg & data rates may apply. Reply STOP to opt out.';
 
-const FILED_OPT_IN_KEYWORDS = ['START', 'YES', 'UNSTOP'] as const;
+/**
+ * What the campaign **actually** files as its opt-in keywords, read back from
+ * the live record on 2026-09-14.
+ *
+ * Not what anyone would choose. The third submission went in holding Twilio's
+ * placeholder text here, and that cannot now be corrected: Twilio permits a
+ * campaign update only while the campaign is FAILED, and this one is VERIFIED —
+ *
+ *   "Campaign update is allowed only for FAILURE state(s).
+ *    It is not allowed in the current state SUCCESS"
+ *
+ * so approval is precisely what closed the edit window. The only route to
+ * changing it is deleting and re-registering the campaign, which restarts
+ * vetting and risks a fresh fee.
+ *
+ * So the code is reconciled to the filing rather than the other way round. The
+ * filing is the artefact a carrier can test; whether it says what we would have
+ * written is beside the point.
+ */
+const FILED_OPT_IN_KEYWORDS = ['VERIFY', 'VERIFICATION'] as const;
+
+/**
+ * The opt-in keywords US carriers require regardless of what is filed. Honoured
+ * whether or not the campaign names them, and it does not.
+ */
+const MANDATED_OPT_IN_KEYWORDS = ['START', 'YES', 'UNSTOP'] as const;
 const FILED_OPT_OUT_KEYWORDS = [
   'OPTOUT',
   'CANCEL',
@@ -88,10 +113,16 @@ describe('the sample messages filed with the campaign', () => {
 describe('the keyword answers filed with the campaign', () => {
   it('honours every filed opt-in keyword', () => {
     // An unrecognised keyword does not fail politely: it falls through to the
-    // reply path and is posted into a document as a comment. The third
-    // submission was nearly filed claiming VERIFY and VERIFICATION, which
-    // nothing here handles.
+    // reply path and is posted into a document as a comment. So a reviewer who
+    // follows the filing's own instructions and texts VERIFY would have written
+    // a stray comment into somebody's document instead of opting in.
     for (const keyword of FILED_OPT_IN_KEYWORDS) {
+      expect(classifyKeyword(keyword)).toBe('start');
+    }
+  });
+
+  it('honours the opt-in keywords carriers mandate, filed or not', () => {
+    for (const keyword of MANDATED_OPT_IN_KEYWORDS) {
       expect(classifyKeyword(keyword)).toBe('start');
     }
   });
@@ -108,9 +139,20 @@ describe('the keyword answers filed with the campaign', () => {
     }
   });
 
-  it('does not claim a keyword it cannot honour', () => {
-    expect(classifyKeyword('VERIFY')).toBeNull();
-    expect(classifyKeyword('VERIFICATION')).toBeNull();
+  // Replaces an assertion that VERIFY and VERIFICATION classify as null. That
+  // pinned the gap deliberately, back when the filing was expected to be
+  // correctable. It is not, so the gap had to be closed from this side.
+  it('does not treat a filed keyword as an ordinary reply', () => {
+    for (const keyword of FILED_OPT_IN_KEYWORDS) {
+      expect(classifyKeyword(keyword)).not.toBeNull();
+    }
+  });
+
+  // Whole-message matching still holds for the added words: someone writing
+  // "please verify the figures" is commenting, not opting in.
+  it('still matches only a whole message', () => {
+    expect(classifyKeyword('please verify the figures')).toBeNull();
+    expect(classifyKeyword('verification required')).toBeNull();
   });
 });
 
