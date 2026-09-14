@@ -19,13 +19,16 @@
  * subtly wrong requests at a customer site rather than at startup here. The
  * seam is what was expensive to retrofit, and the seam is what this provides.
  *
- * The type covers what the app does today. `process()` for Processor operations
- * arrives with the first one, since an interface invented ahead of a caller
- * tends to be the wrong interface.
+ * The type covers what the app does today, and it now spans **both** Nutrient
+ * product surfaces, because a processing job needs both: `downloadDocument` and
+ * `uploadDocument` are Viewer API calls, `processDocument` is a Processor API
+ * call, and they take different keys. One provider rather than two, because from
+ * the app's side "do this to that document" is one job, and splitting it would
+ * push the two-keys detail out to every caller.
  */
 
 import { type NutrientConfig, type NutrientTarget, nutrientConfig } from '@/lib/nutrient-config';
-import { viewerApiKey } from '@/lib/nutrient-key';
+import { processorApiKey, viewerApiKey } from '@/lib/nutrient-key';
 
 export type DocumentUpload = {
   documentId: string;
@@ -38,9 +41,45 @@ export type ViewerSession = {
   sessionToken: string;
 };
 
+/**
+ * A Build instruction document: what to do, to which uploaded part, producing what.
+ *
+ * Deliberately loose here. The provider's job is to carry instructions to the
+ * backend and bytes back; what constitutes a valid instruction is the operation's
+ * own business, and `lib/redaction.ts` owns that for the one operation there is.
+ * Typing every action the Processor API offers would be a large speculative
+ * surface with one caller.
+ */
+export type ProcessInstructions = {
+  parts: readonly { file: string }[];
+  actions: readonly Record<string, unknown>[];
+  output?: Record<string, unknown>;
+};
+
 export type DocumentProvider = {
   readonly target: NutrientTarget;
   uploadDocument(options: { file: File }): Promise<DocumentUpload>;
+  /**
+   * Read a stored document's bytes back, so they can be worked on.
+   *
+   * A processing job needs the original file, and the backend is the only place
+   * it exists — the app stores metadata, never content.
+   */
+  downloadDocument(options: { documentId: string }): Promise<ArrayBuffer>;
+  /**
+   * Run a Build instruction over a file and return the finished document.
+   *
+   * **Synchronous, and that is a property of the API, not of this method.**
+   * `POST /build` returns the finished file in the response body: there is no
+   * job id, no polling and no webhook, so a large operation holds the connection
+   * open for as long as the work takes. Everything asynchronous about a job in
+   * this app — queueing, status, retry — is ours, built on top of this.
+   */
+  processDocument(options: {
+    source: Uint8Array<ArrayBuffer>;
+    filename: string;
+    instructions: ProcessInstructions;
+  }): Promise<ArrayBuffer>;
   /**
    * `userId` is the app's own user ID. The backend records it as `createdBy` on
    * anything the reader authors in the viewer, which is what ties a comment back
@@ -76,9 +115,61 @@ const readString = (body: JsonRecord, paths: readonly string[]): string | undefi
   return undefined;
 };
 
+/**
+ * Turn a Processor API failure into something a reader can act on.
+ *
+ * Worth the effort because this API, unlike the Viewer one, says precisely what
+ * was wrong: a 400 names the failing path in the instructions. Flattening that
+ * to a status code would discard the one detail that distinguishes a fixable
+ * job from an opaque one.
+ *
+ * A 403 is called out by name because it is the failure that keeps recurring
+ * here, always for the same reason — the two keys are easy to swap and the API
+ * does not say which one it wanted.
+ */
+const describeProcessorFailure = async (response: Response): Promise<string> => {
+  const raw = await response.text();
+
+  if (response.status === 403) {
+    return (
+      'Processing was refused with 403 Forbidden. This almost always means the viewer key ' +
+      'was sent instead of the processor key — check NUTRIENT_PROCESSOR_API_KEY.'
+    );
+  }
+
+  const failingPaths = (() => {
+    try {
+      const error = asRecord(asRecord(JSON.parse(raw)).error);
+      const paths = error.failingPaths;
+
+      if (!Array.isArray(paths)) {
+        return undefined;
+      }
+
+      return paths
+        .map((entry) => {
+          const { path, details } = asRecord(entry);
+          return `${String(path)} ${String(details)}`;
+        })
+        .join('; ');
+    } catch {
+      return undefined;
+    }
+  })();
+
+  if (failingPaths) {
+    return `Processing failed: ${response.status} - ${failingPaths}`;
+  }
+
+  return `Processing failed: ${response.status} - ${raw}`;
+};
+
 const createDwsProvider = (config: NutrientConfig): DocumentProvider => {
   const documentsUrl = `${config.baseUrl}/viewer/documents`;
   const sessionsUrl = `${config.baseUrl}/viewer/sessions`;
+  // The Processor API sits at the same origin but outside /viewer, and takes the
+  // other key. One origin, two product surfaces.
+  const buildUrl = `${config.baseUrl}/build`;
 
   const authorization = (): string => `Bearer ${viewerApiKey()}`;
 
@@ -179,6 +270,54 @@ const createDwsProvider = (config: NutrientConfig): DocumentProvider => {
     },
 
     createViewerSession,
+
+    async downloadDocument(options: { documentId: string }): Promise<ArrayBuffer> {
+      // `/pdf` is not a guess and not documented. Probing the live API, the bare
+      // document URL and every other spelling tried — /file, /download, /content
+      // — answered 404; this one answers 200 with application/pdf.
+      const response = await fetch(`${documentsUrl}/${options.documentId}/pdf`, {
+        headers: { Authorization: authorization() },
+        signal: signal(),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Document download failed: ${response.status} - ${await response.text()}`);
+      }
+
+      return response.arrayBuffer();
+    },
+
+    async processDocument(options: {
+      source: Uint8Array<ArrayBuffer>;
+      filename: string;
+      instructions: ProcessInstructions;
+    }): Promise<ArrayBuffer> {
+      const { source, filename, instructions } = options;
+
+      const body = new FormData();
+      body.set('instructions', JSON.stringify(instructions));
+
+      // The multipart field name must equal the name `parts` references, or the
+      // API answers file_not_found. The instructions are the authority on it, so
+      // it is read from them rather than passed alongside and kept in step by hand.
+      const partName = instructions.parts[0]?.file ?? 'document';
+      body.set(partName, new File([source], filename, { type: 'application/pdf' }));
+
+      const response = await fetch(buildUrl, {
+        method: 'POST',
+        // No Content-Type: fetch sets it, with the multipart boundary. Setting it
+        // by hand omits the boundary and the request cannot be parsed.
+        headers: { Authorization: `Bearer ${processorApiKey()}` },
+        body,
+        signal: signal(),
+      });
+
+      if (response.ok) {
+        return response.arrayBuffer();
+      }
+
+      throw new Error(await describeProcessorFailure(response));
+    },
 
     async deleteDocument(options: { documentId: string }): Promise<void> {
       const response = await fetch(`${documentsUrl}/${options.documentId}`, {

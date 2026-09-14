@@ -32,7 +32,13 @@ model Account {
   scope                 String?
   password              String?
   createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  // @default(now()) states what the database already holds. The BetterAuth
+  // migration had to add this column with DEFAULT CURRENT_TIMESTAMP, because a
+  // NOT NULL column cannot be added to a populated table without one. Leaving
+  // the default out of the schema made Prisma want to drop it in every
+  // subsequent migration, so unrelated ALTERs kept appearing in feature
+  // migrations. Declaring it is the non-destructive direction.
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -52,7 +58,8 @@ model Session {
   ipAddress String?  @map("ip_address")
   userAgent String?  @map("user_agent")
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  /// See the note on Account.updatedAt: the default is what the database has.
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -96,7 +103,8 @@ model Verification {
   value      String
   expiresAt  DateTime @map("expires_at")
   createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  /// See the note on Account.updatedAt: the default is what the database has.
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@index([identifier])
   @@map("verification")
@@ -113,15 +121,78 @@ model Document {
   fileSize         BigInt?  @map("file_size")
   author           String?
   ownerId          String   @map("owner_id")
+  /// The document this one was produced from, when it is the output of a job.
+  ///
+  /// A processing operation never mutates its input: redacting a document
+  /// produces a new one and leaves the original alone. That is mandatory for
+  /// redaction in particular — an in-place redaction that goes wrong has
+  /// destroyed the evidence of what it removed — and having taken that
+  /// constraint, lineage is free.
+  ///
+  /// SetNull rather than Cascade: deleting an original must not silently take
+  /// the redacted copy with it. The copy is usually the one that matters, and
+  /// deleting the source is often precisely the point of making it.
+  derivedFromId    String?  @map("derived_from_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  derivedFrom Document?  @relation("DocumentLineage", fields: [derivedFromId], references: [id], onDelete: SetNull)
+  derivatives Document[] @relation("DocumentLineage")
 
   commentThreads CommentThread[]
   shares         DocumentShare[]
+  jobs           DocumentJob[]
+  producedByJob  DocumentJob?     @relation("JobOutput")
 
+  @@index([derivedFromId])
   @@map("documents")
+}
+
+/// One asynchronous operation against a document.
+///
+/// **The asynchrony is entirely ours.** The Processor API is synchronous —
+/// `POST /build` returns the finished file in the response body, with no job id,
+/// no polling and no webhook — so nothing upstream provides this. That is also
+/// why it is worth having: a synchronous call that takes a minute cannot be made
+/// from a user-facing request without holding it open for a minute.
+///
+/// There is deliberately **one code path, always asynchronous**. An
+/// `asyncThresholdBytes` that ran small jobs inline was considered and rejected:
+/// two paths through one operation is less legible, and legibility is the point
+/// of a reference implementation.
+model DocumentJob {
+  id         String            @id @default(cuid())
+  documentId String            @map("document_id")
+  kind       DocumentJobKind
+  status     DocumentJobStatus @default(PENDING)
+  /// What the operation was asked to do — for redaction, the validated strategy
+  /// and its pattern. Stored so a finished job can still answer "what did this
+  /// remove", which a status alone cannot.
+  parameters Json
+  /// Who asked. Kept as a plain id rather than a relation because a job outlives
+  /// the question of whether that account still exists, and losing the audit
+  /// trail to a cascade would be worse than a dangling id.
+  requestedById String @map("requested_by_id")
+  /// The document produced, once there is one. Null until the job succeeds.
+  outputDocumentId String? @unique @map("output_document_id")
+  /// Why it failed, in the API's own words where possible.
+  error      String?
+  /// How many times a runner has claimed this job. Bounds retries: the sweeper
+  /// would otherwise re-claim a job that fails on every attempt forever.
+  attempts   Int               @default(0)
+  startedAt  DateTime?         @map("started_at")
+  finishedAt DateTime?         @map("finished_at")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  document Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  output   Document? @relation("JobOutput", fields: [outputDocumentId], references: [id], onDelete: SetNull)
+
+  /// The sweeper's query: find work that is pending, or running and abandoned.
+  @@index([status, createdAt])
+  @@index([documentId])
+  @@map("document_jobs")
 }
 
 /// Someone other than the owner who may read a document.
@@ -246,6 +317,30 @@ enum NotificationChannel {
   EMAIL
   SMS
   BOTH
+}
+
+/// Which operation a job performs.
+///
+/// One member today. Redaction was chosen as the first Processor operation
+/// because it composes with the comment and mention layer already here — redact,
+/// then discuss the redacted copy — rather than standing alone as a bolted-on
+/// feature, and because it is the operation where "never mutate the input" is a
+/// requirement rather than a preference.
+enum DocumentJobKind {
+  REDACTION
+}
+
+/// Where a job has got to.
+///
+/// PENDING and RUNNING are distinguished so a crashed runner is visible: a job
+/// RUNNING with no recent heartbeat is abandoned work, which is exactly what the
+/// sweeper looks for. Collapsing them would make a stuck job indistinguishable
+/// from a queued one.
+enum DocumentJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
 }
 
 /// A phone number being claimed by a user, before it is trusted.
