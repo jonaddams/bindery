@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRedactionInstructions,
   parseRedactionRequest,
+  REDACTION_PRESET_LABELS,
   REDACTION_PRESETS,
 } from '@/lib/redaction';
 
@@ -151,5 +152,21 @@ describe('The offered presets', () => {
     expect(REDACTION_PRESETS).toContain('social-security-number');
     expect(REDACTION_PRESETS).toContain('email-address');
     expect(REDACTION_PRESETS).toContain('north-american-phone-number');
+  });
+
+  // A dropdown reading "north-american-phone-number" is an API identifier
+  // leaking into a person's face. Every preset needs a label, and a missing one
+  // must fail here rather than render as a slug.
+  it('each carry a label written for a person to read', () => {
+    for (const preset of REDACTION_PRESETS) {
+      const label = REDACTION_PRESET_LABELS[preset];
+
+      expect(label, `no label for ${preset}`).toBeTruthy();
+      expect(label).not.toContain('-');
+    }
+  });
+
+  it('label nothing that is not a preset', () => {
+    expect(Object.keys(REDACTION_PRESET_LABELS).sort()).toEqual([...REDACTION_PRESETS].sort());
   });
 });
