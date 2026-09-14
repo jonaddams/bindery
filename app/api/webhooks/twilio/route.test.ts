@@ -72,6 +72,53 @@ beforeEach(() => {
   addComment.mockResolvedValue({ commentId: 'comment_1' });
 });
 
+describe('the TwiML reply is well-formed XML', () => {
+  // Twilio parses the response as XML. A raw & is not valid XML, so a message
+  // containing one makes the whole document unparseable and Twilio sends
+  // NOTHING — silently, from the app's point of view: the webhook returned 200,
+  // the database was updated, and no reply ever reached the handset.
+  //
+  // This is not hypothetical. Registering a number in production on 2026-09-14
+  // produced Twilio error 12200, "The reference to entity "data" must end with
+  // the ';' delimiter", because REGISTERED_MESSAGE carries "Msg&data rates may
+  // apply". The messages are filed with the A2P campaign and pinned by
+  // lib/a2p-filing.test.ts, so the text cannot change to suit the encoding —
+  // the encoding has to handle the text.
+  it('escapes an ampersand in the message', async () => {
+    looksLikeVerificationCode.mockReturnValue(true);
+    redeemPhoneVerification.mockResolvedValue({ status: 'verified', userId: 'user_1' });
+
+    const body = await (await POST(post({ ...inboundReply, Body: 'AB12' }))).text();
+
+    expect(REGISTERED_MESSAGE).toContain('&');
+    expect(body).toContain('&amp;');
+    expect(body).not.toMatch(/&(?!amp;|lt;|gt;|quot;|apos;)/);
+  });
+
+  it('escapes the help message, which also carries an ampersand', async () => {
+    const body = await (await POST(post({ ...inboundReply, Body: 'HELP' }))).text();
+
+    expect(body).not.toMatch(/&(?!amp;|lt;|gt;|quot;|apos;)/);
+  });
+
+  it('escapes angle brackets, which would otherwise inject elements', async () => {
+    redeemPhoneVerification.mockResolvedValue({ status: 'no-match' });
+    findFirstUser.mockResolvedValue(null);
+
+    const body = await (await POST(post({ ...inboundReply, Body: 'HELP' }))).text();
+
+    // Nothing between the tags may open an element of its own.
+    const inner = body.replace(/^[\s\S]*<Response>/, '').replace(/<\/Response>[\s\S]*$/, '');
+    expect(inner.replace(/<\/?Message>/g, '')).not.toMatch(/[<>]/);
+  });
+
+  it('still produces an empty Response when there is nothing to say', async () => {
+    const body = await (await POST(post({ ...inboundReply, Body: '' }))).text();
+
+    expect(body).toContain('<Response></Response>');
+  });
+});
+
 describe('signature', () => {
   it('rejects an unsigned request before doing anything else', async () => {
     verifyTwilioSignature.mockReturnValue(false);
@@ -160,7 +207,18 @@ describe('registration', () => {
 
     const body = await (await POST(post({ ...inboundReply, Body: 'AB12' }))).text();
 
-    expect(body).toContain(REGISTERED_MESSAGE);
+    // Compared after decoding the XML entities rather than against the raw body:
+    // the reply is XML-escaped (a bare & would make it unparseable), so what has
+    // to match the filed constant is the message Twilio will *send*, not the
+    // bytes on the wire.
+    const sent = body
+      .replace(/^[\s\S]*<Message>/, '')
+      .replace(/<\/Message>[\s\S]*$/, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+
+    expect(sent).toBe(REGISTERED_MESSAGE);
     expect(REGISTERED_MESSAGE).toMatch(/^Bindery: /);
   });
 

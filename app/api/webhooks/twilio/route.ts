@@ -71,10 +71,37 @@ import { verifyTwilioSignature } from '@/lib/twilio';
  * assumption is recorded here rather than left implicit.
  */
 
+/**
+ * Escape text for inclusion in an XML element.
+ *
+ * **A raw `&` makes the whole TwiML document unparseable, and the failure is
+ * silent from this side.** Twilio parses the response as XML; if that parse
+ * fails it sends nothing at all, while this route has already returned 200 and
+ * already written to the database. So the app believes it replied, the handset
+ * receives nothing, and the only evidence is a `12200` in Twilio's alerts log
+ * that nothing here surfaces.
+ *
+ * That is not hypothetical: registering a number in production on 2026-09-14
+ * produced exactly that, because `REGISTERED_MESSAGE` carries "Msg&data rates
+ * may apply". It had worked in September only because the copy then contained
+ * no ampersand; centralising the program copy added the rates disclosure and
+ * broke every reply carrying one, without a single test noticing.
+ *
+ * The messages are filed with the A2P campaign and pinned by
+ * `lib/a2p-filing.test.ts`, so the text cannot be changed to suit the encoding.
+ * The encoding has to handle the text — which is the right way round anyway.
+ */
+const escapeXml = (text: string): string =>
+  text
+    // Ampersand first: escaping it after the others would double-escape them.
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
 const twiml = (message?: string): NextResponse =>
   new NextResponse(
     `<?xml version="1.0" encoding="UTF-8"?><Response>${
-      message ? `<Message>${message}</Message>` : ''
+      message ? `<Message>${escapeXml(message)}</Message>` : ''
     }</Response>`,
     { status: 200, headers: { 'Content-Type': 'text/xml' } }
   );
