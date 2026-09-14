@@ -1503,16 +1503,44 @@ never touch the config. The deployment looked healthy from outside.
 any resolver reads them, so every existing `undefined` path handles them. A `,,,`
 typo still reports, deliberately.
 
+### The precedence, measured rather than assumed
+
+Verified against `@next/env` 16.3.1 on 2026-09-14: **a name already present in
+the environment is never overwritten by a `.env` file.** So Vercel always wins
+for the names it defines, and `.env.production` only ever supplies names Vercel
+does *not*.
+
+```
+process.env.TWILIO_AUTH_TOKEN = 'REAL_VERCEL_VALUE'   // as Vercel supplies it
+delete process.env.TWILIO_WEBHOOK_URL                 // documented, not in Vercel
+loadEnvConfig(cwd)                                    // .env.production has both, blank
+→ TWILIO_AUTH_TOKEN  = "REAL_VERCEL_VALUE"   // file did NOT override
+→ TWILIO_WEBHOOK_URL = ""                    // file DID supply the blank
+```
+
+**This corrects what this file and `.env.production` both used to say** — that a
+value here "wins over" Vercel. It does not, and the true rule relocates the
+danger. The risk is not a stale value here shadowing a real one; that cannot
+happen. The risk is a name documented here with an empty assignment and *not*
+set in Vercel, which reaches the process as `''`.
+
 Two consequences worth carrying:
 
 - **Write a test for `''`, not just `' , '`.** The original tests covered the
   latter and never the former, and `''` is the only value a documented-but-unset
   variable actually produces.
-- **Document a secret as a comment, not an empty assignment.** A blank
-  `TWILIO_AUTH_TOKEN` degrades one feature; a blank `BETTER_AUTH_SECRET` means
-  nobody can sign in, because a value here *wins over* the one configured in
-  Vercel. The BetterAuth, `NUTRIENT_PROCESSOR_API_KEY` and `CRON_SECRET` blocks
-  are all comments for this reason.
+- **Fall back on falsiness, not nullishness.** `??` keeps a blank; `||` or an
+  explicit emptiness check does not. This has now broken production twice, and
+  the second one hid for a fortnight: the inbound Twilio webhook read
+  `process.env.TWILIO_WEBHOOK_URL ?? request.url`, kept the `''`, and verified
+  every signature against an empty URL — so production answered **403 to every
+  inbound message**: STOP, HELP, verification codes and replies alike. From
+  outside it looked exactly like a webhook correctly rejecting forgeries, and
+  the local database made it look like inbound worked.
+- **Documenting a secret as a comment is still right**, but for a plainer
+  reason than previously given: not because the blank would beat Vercel, but
+  because a blank is indistinguishable from "configured as empty" to every
+  reader, human or code.
 
 ## Gotchas found while building the job seam
 
