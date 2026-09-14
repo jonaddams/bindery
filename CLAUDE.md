@@ -1434,7 +1434,111 @@ Replaying one end-to-end needs the reply token in the event to exist in whicheve
 database the app is pointed at; tokens minted in production are not in the local
 database.
 
-## SMS notifications (Twilio)
+## DWS Processor API — verified behaviour
+
+Established by probing the live API on 2026-09-14 while building the job seam.
+As with the Comment API above, these are observations, and the documentation
+that was to hand was **wrong on the central point**. Do not trust a redaction
+example without running it.
+
+- **`POST /build` takes the Processor key, and only it.** The viewer key answers
+  **403 Forbidden**. This is the exact mirror of the known viewer-side rule (the
+  processor key 403s every `/viewer/*` request), so the two keys fail
+  symmetrically and neither error says which key it wanted. `lib/nutrient-key.ts`
+  resolves both; `resolveProcessorApiKey` deliberately has **no fallback**,
+  because falling back would turn a clear startup error into an opaque 403
+  mid-job.
+- **Probe auth without spending credits** by sending deliberately malformed
+  instructions. A `401`/`403` means the key was rejected; a `400` means auth
+  passed and only the payload was bad. `{"nonsense":true}` is enough.
+- **Redaction is two actions, not one**, and the pattern nests under
+  `strategyOptions`:
+
+  ```json
+  {"type":"createRedactions","strategy":"preset","strategyOptions":{"preset":"email-address"}}
+  {"type":"applyRedactions"}
+  ```
+
+  A single `redaction` action with a flat `preset` — which is what the reference
+  documentation showed — is rejected with "`redaction` is not a supported action
+  type". **Forgetting the second action is the dangerous failure**, not a loud
+  one: `createRedactions` only *marks* text, producing a document with black
+  boxes drawn over content that is still fully present underneath. It looks
+  redacted; copying the text out returns it.
+- **The Processor API's errors are genuinely useful**, unlike the Viewer API's.
+  A 400 carries `error.failingPaths[]`, each naming a `path` into the
+  instructions and what was wrong with it. Worth preserving into any thrown
+  error rather than flattening to a status code — it is the difference between a
+  fixable job and an opaque one.
+- **Validate a whole set of enumerated values in one free call.** The API
+  validates every action and reports every failing path at once, so stacking one
+  `createRedactions` per preset — and omitting the file — checks them all for the
+  price of a 400. That is how the preset list in `lib/redaction.ts` was
+  confirmed; an invalid preset reports `is invalid` against its own index.
+- **Downloading a document is undocumented: `GET /viewer/documents/{id}/pdf`**,
+  with the **Viewer** key. The bare document URL and `/file`, `/download` and
+  `/content` all answer 404. This matters because a processing job spans both
+  product surfaces — download and re-upload are Viewer calls, the work between
+  them is a Processor call — so `lib/document-provider.ts` needs both keys.
+- **`POST /build` is synchronous.** It returns the finished file in the response
+  body: no job id, no polling, no webhook. Every asynchronous thing about a job
+  in this app is therefore ours, which is what `DocumentJob` and
+  `lib/job-runner.ts` exist for. Limits: 100 MB per file, 500 MB per request.
+
+## `.env.production` documents by empty assignment, and that is a trap
+
+**A documented-but-unset variable arrives as `''`, never `undefined`.**
+`.env.production` lists each name with an empty assignment so the file documents
+it, and Next loads that file in the production runtime. So any resolver that
+validates its input sees a blank string rather than an absent value.
+
+This took production down once already (PR #19, fixed by #20):
+`resolveAllowedMimeTypes` fell back only on `undefined`, so `''` split to `['']`,
+filtered to `[]`, and threw. `nutrientConfig()` is resolved by **every document
+route**, so upload, viewer-url and delete all died — while `/`, `/auth/signin`
+and `/api/auth/get-session` kept answering normally, because the auth routes
+never touch the config. The deployment looked healthy from outside.
+
+`withoutBlanks` in `lib/nutrient-config.ts` now erases wholly blank values before
+any resolver reads them, so every existing `undefined` path handles them. A `,,,`
+typo still reports, deliberately.
+
+Two consequences worth carrying:
+
+- **Write a test for `''`, not just `' , '`.** The original tests covered the
+  latter and never the former, and `''` is the only value a documented-but-unset
+  variable actually produces.
+- **Document a secret as a comment, not an empty assignment.** A blank
+  `TWILIO_AUTH_TOKEN` degrades one feature; a blank `BETTER_AUTH_SECRET` means
+  nobody can sign in, because a value here *wins over* the one configured in
+  Vercel. The BetterAuth, `NUTRIENT_PROCESSOR_API_KEY` and `CRON_SECRET` blocks
+  are all comments for this reason.
+
+## Gotchas found while building the job seam
+
+- **A stale `.next` survives a branch change and breaks `pnpm typecheck`.**
+  After pulling across the NextAuth → BetterAuth migration, typecheck failed on
+  `.next/dev/types/validator.ts` importing the deleted
+  `app/api/auth/[...nextauth]/route`. Nothing in the source tree was wrong.
+  `rm -rf .next` clears it. The generated type file is not regenerated merely
+  because the route vanished.
+- **A worktree has no `.env.local`**, because it is gitignored and so exists only
+  in the checkout it was created in. Every Prisma CLI command then fails with
+  "the `datasource.url` property is required", which reads like a
+  `prisma.config.ts` problem and is not. Copy `.env.local` into the worktree.
+  (This is a sibling of the known "a worktree gets its own generated Prisma
+  client" gotcha.)
+- **Prisma wanted to `DROP DEFAULT` on three BetterAuth columns in every
+  migration.** The BetterAuth migration had to add `accounts.updated_at`,
+  `sessions.updated_at` and `verification.updated_at` with
+  `DEFAULT CURRENT_TIMESTAMP`, because a `NOT NULL` column cannot be added to a
+  populated table without one — but the schema declared them with `@updatedAt`
+  and no `@default`, so schema and database disagreed permanently. The effect is
+  that **unrelated `ALTER`s silently ride along inside the next feature's
+  migration**, which is how an unreviewed change reaches production. Fixed by
+  declaring `@default(now())`, making the schema state what the database
+  already holds — the non-destructive direction. If a generated migration
+  contains statements you did not ask for, that is the bug, not noise.
 
 - **Twilio signs nothing like Resend does.** HMAC-SHA1 over the full URL plus
   every POST parameter sorted by key and concatenated as `key + value`, in

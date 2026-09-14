@@ -7,10 +7,18 @@
  * generalise against — an abstraction invented ahead of its second caller tends
  * to be the wrong one.
  *
- * **The action is a single `redaction` step, not a create/apply pair.** The Web
- * SDK and Document Engine model redaction as `createRedactions` followed by
- * `applyRedactions`; the Processor API does not, and sending that pair here is
- * rejected. The shapes are close enough to look interchangeable and are not.
+ * **Redaction is two actions: `createRedactions` then `applyRedactions`**, with
+ * the pattern nested under `strategyOptions` rather than sitting flat on the
+ * action. This is verified against the live API, and it contradicts the
+ * documentation that was to hand, which described a single `redaction` action
+ * carrying a flat `preset`. That shape is rejected outright:
+ * "`redaction` is not a supported action type". Do not trust a redaction example
+ * without running it.
+ *
+ * Both actions are required, and the failure mode if the second is forgotten is
+ * the dangerous one: `createRedactions` only *marks* text, producing a document
+ * with black boxes drawn over content that is still fully present underneath.
+ * It looks redacted. Copying the text out returns it.
  *
  * **AI redaction is deliberately not offered.** The API supports an
  * `ai_redaction` action taking natural-language criteria, and it is the wrong
@@ -56,7 +64,8 @@ export type RedactionRequestResult =
 /** A Build instruction document, narrowed to what a redaction job sends. */
 export type RedactionInstructions = {
   parts: readonly [{ file: string }];
-  actions: readonly [Record<string, unknown>];
+  /** Always exactly two: mark, then apply. */
+  actions: readonly [Record<string, unknown>, { type: 'applyRedactions' }];
   output: { type: 'pdf' };
 };
 
@@ -158,19 +167,19 @@ export const buildRedactionInstructions = (options: {
 }): RedactionInstructions => {
   const { filePartName, redaction } = options;
 
-  const action =
+  const strategyOptions =
     redaction.strategy === 'preset'
-      ? { type: 'redaction', strategy: 'preset', preset: redaction.preset }
-      : {
-          type: 'redaction',
-          strategy: 'regex',
-          regex: redaction.regex,
-          caseSensitive: redaction.caseSensitive,
-        };
+      ? { preset: redaction.preset }
+      : { regex: redaction.regex, caseSensitive: redaction.caseSensitive };
 
   return {
     parts: [{ file: filePartName }],
-    actions: [action],
+    actions: [
+      { type: 'createRedactions', strategy: redaction.strategy, strategyOptions },
+      // Without this the text is merely covered, not removed. See the note at
+      // the top of this file.
+      { type: 'applyRedactions' },
+    ],
     output: { type: 'pdf' },
   };
 };

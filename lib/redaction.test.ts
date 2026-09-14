@@ -16,9 +16,28 @@ describe('Describing a redaction to the Processor API', () => {
 
     expect(instructions).toEqual({
       parts: [{ file: 'document' }],
-      actions: [{ type: 'redaction', strategy: 'preset', preset: 'social-security-number' }],
+      actions: [
+        {
+          type: 'createRedactions',
+          strategy: 'preset',
+          strategyOptions: { preset: 'social-security-number' },
+        },
+        { type: 'applyRedactions' },
+      ],
       output: { type: 'pdf' },
     });
+  });
+
+  // Marking and applying are two actions, and both are required. createRedactions
+  // alone produces a document with redaction annotations drawn over the text and
+  // the text still underneath it — which looks redacted and is not.
+  it('applies the redactions it marks, rather than only marking them', () => {
+    const instructions = buildRedactionInstructions({
+      filePartName: 'document',
+      redaction: { strategy: 'preset', preset: 'email-address' },
+    });
+
+    expect(instructions.actions.at(-1)).toEqual({ type: 'applyRedactions' });
   });
 
   it('redacts a regular expression', () => {
@@ -27,9 +46,11 @@ describe('Describing a redaction to the Processor API', () => {
       redaction: { strategy: 'regex', regex: 'ACME-\\d{4}', caseSensitive: true },
     });
 
-    expect(instructions.actions).toEqual([
-      { type: 'redaction', strategy: 'regex', regex: 'ACME-\\d{4}', caseSensitive: true },
-    ]);
+    expect(instructions.actions[0]).toEqual({
+      type: 'createRedactions',
+      strategy: 'regex',
+      strategyOptions: { regex: 'ACME-\\d{4}', caseSensitive: true },
+    });
   });
 
   // The multipart field name has to match what `parts` references, or the API

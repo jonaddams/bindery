@@ -89,7 +89,12 @@ describe('running a redaction job', () => {
 
     const { instructions } = processDocument.mock.calls[0][0];
     expect(instructions.actions).toEqual([
-      { type: 'redaction', strategy: 'preset', preset: 'social-security-number' },
+      {
+        type: 'createRedactions',
+        strategy: 'preset',
+        strategyOptions: { preset: 'social-security-number' },
+      },
+      { type: 'applyRedactions' },
     ]);
   });
 
