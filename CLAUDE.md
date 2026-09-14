@@ -1616,9 +1616,35 @@ Two consequences worth carrying:
 - **SMS never carries comment text.** A lock screen is a different privacy
   posture from an inbox. `buildMentionSms` takes no `commentText` parameter, so
   reintroducing one is a visible signature change rather than a quiet one.
-- **STOP/HELP are handled in our webhook rather than left to Twilio's Advanced
-  Opt-Out,** so `smsOptedOutAt` reflects reality and the notifier stops queuing
-  sends Twilio would otherwise silently drop. Keyword matching is whole-message
+- **STOP is handled in our webhook; HELP never reaches it.** Measured in
+  production on 2026-09-14 by texting each keyword and reading both the database
+  and Twilio's logs — the claim that both were handled here was half wrong.
+
+  | Keyword | Twilio | Our webhook | Messages the sender gets |
+  | --- | --- | --- | --- |
+  | `STOP` | sends its own confirmation | **called** — sets `smsOptedOutAt`, replies silently | 1, Twilio's |
+  | `START` | sends its own confirmation | **called** — clears `smsOptedOutAt`, replies `OPTED_BACK_IN_MESSAGE` | **2** |
+  | `HELP` | answers with the campaign's filed `help_message` | **not called at all** | 1, Twilio's |
+
+  So the important half holds: **`smsOptedOutAt` does reflect reality**, because
+  STOP and START both reach us. Verified by the column being set one second
+  after an inbound STOP and cleared one second after a START.
+
+  **`HELP_MESSAGE` is dead code in production.** Twilio answers HELP itself with
+  the text filed on the campaign, which is Twilio's unedited placeholder
+  ("Reply STOP to unsubscribe. Msg&Data Rates May Apply.") and — since a
+  `VERIFIED` campaign cannot be edited — always will be. The evidence that the
+  webhook is not called at all: no outbound message from the account, and no
+  entry in Twilio's alerts log, for an inbound HELP that the Messages log shows
+  arriving.
+
+  **START deliberately sends a second message**, which reads like the
+  double-messaging that STOP is silent to avoid. Keep it: `OPTED_BACK_IN_MESSAGE`
+  is filed sample #5 with the campaign, so not sending it would make the filing
+  claim a message the program never sends — the same class of discrepancy as the
+  `VERIFY` keywords, and equally uncorrectable now.
+
+  Keyword matching is whole-message
   (STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/QUIT/**OPTOUT**/**REVOKE** to opt out;
   START/YES/UNSTOP/VERIFY/VERIFICATION to opt back in; HELP/INFO for help), not substring, and it is
   checked before the verification-code check so a STOP from an otherwise-valid
@@ -1713,6 +1739,47 @@ Two consequences worth carrying:
   instead of following this pattern, so an unauthenticated call to it answers
   500 where every other route answers 401. Not introduced by SMS work; worth
   its own small fix.)
+### Debugging inbound SMS: read Twilio's logs, not ours
+
+Four separate breaks were found on this path on 2026-09-14, each hidden behind
+the one in front of it, and none of them logged anything on our side. These three
+APIs are what actually found them, and none needs the console:
+
+```bash
+# Every message, with the EXACT body. repr() matters: 'STOP ' has a trailing
+# space, and whether trim() runs before matching is the difference between an
+# opt-out and a comment posted to a document.
+GET /2010-04-01/Accounts/{SID}/Messages.json?PageSize=8
+
+# Why a webhook failed. This is the only place an error surfaces: our route can
+# answer 500, or return unparseable XML, and nothing in the app records either.
+GET https://monitor.twilio.com/v1/Alerts?PageSize=6
+
+# What the number is actually configured to do.
+GET /2010-04-01/Accounts/{SID}/IncomingPhoneNumbers.json
+```
+
+The alert codes seen, and what each meant here:
+
+| Code | Meaning | The actual cause |
+| --- | --- | --- |
+| `11200` | HTTP retrieval failure | our route answered 500 — a DWS 404 the code treated as retryable |
+| `12200` | Schema validation | unescaped `&` in the reply made the TwiML unparseable, so Twilio sent nothing |
+| `30034` | Unregistered number | A2P not yet approved; outbound silently undelivered |
+
+**Reproduce a webhook call directly rather than texting.** Twilio's signature is
+HMAC-SHA1 over the full URL plus every POST parameter sorted by key and
+concatenated as `key + value`, base64-encoded. A short script that signs and
+POSTs gets the response body — which is where the DWS 404 was finally legible,
+after the Twilio alert had said only "Internal Server Error". Sign against
+`TWILIO_WEBHOOK_URL` when it is set, since that is the URL the app verifies
+against, not the one the request arrives on.
+
+**A reply arriving does not mean the app sent it**, and this cost real time.
+Twilio answers STOP, START and HELP itself. Check the direction and body in the
+Messages log: an `outbound-reply` carrying our copy is ours; anything else is
+Twilio's, and for HELP there will be no outbound from the account at all.
+
 - **Trial account:** sends only to verified numbers, prepends "Sent from your
   Twilio trial account", 100-message allowance. A round trip costs 2–3 messages.
   Skip the Messaging Service while on trial and set the webhook directly on the
