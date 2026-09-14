@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { DocumentViewer } from '@/components/document-viewer';
+import { RedactionPanel } from '@/components/redaction-panel';
 import { SignOutButton } from '@/components/sign-out-button';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { getEffectiveDocumentFilter, requireAuth } from '@/lib/auth';
+import { getDocumentWriteFilter, getEffectiveDocumentFilter, requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 type Params = {
@@ -25,6 +26,14 @@ export default async function DocumentView({ params }: { params: Promise<Params>
             email: true,
           },
         },
+        // A redacted copy is a separate document, so without this the reader has
+        // no way back to what it was made from.
+        derivedFrom: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
       },
     });
 
@@ -44,6 +53,16 @@ export default async function DocumentView({ params }: { params: Promise<Params>
     if (!canAccess) {
       notFound();
     }
+
+    // Whether this reader may *start* a redaction, which is a narrower
+    // permission than reading the document: it spends processing credits and
+    // creates a document owned by the owner. The route enforces the same split
+    // — this only decides whether to offer the control.
+    const canRedact =
+      (await prisma.document.findFirst({
+        where: { id, ...getDocumentWriteFilter(session.user) },
+        select: { id: true },
+      })) !== null;
 
     const formatFileSize = (bytes: bigint | null) => {
       if (!bytes || bytes === BigInt(0)) return '0 Bytes';
@@ -141,9 +160,24 @@ export default async function DocumentView({ params }: { params: Promise<Params>
                       {document.fileType}
                     </td>
                   </tr>
+                  {document.derivedFrom && (
+                    <tr>
+                      <td className="py-1.5 font-medium text-muted">Redacted from</td>
+                      <td className="py-1.5" colSpan={3}>
+                        <Link
+                          href={`/documents/${document.derivedFrom.id}`}
+                          className="text-primary hover:text-primary-hover transition-colors"
+                        >
+                          {document.derivedFrom.title}
+                        </Link>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
+
+            <RedactionPanel documentId={document.id} canRedact={canRedact} />
 
             {/* Document viewer */}
             <DocumentViewer documentId={document.id} className="h-[calc(100vh-240px)]" />

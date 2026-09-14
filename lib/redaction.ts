@@ -53,6 +53,30 @@ export const REDACTION_PRESETS = [
 
 export type RedactionPreset = (typeof REDACTION_PRESETS)[number];
 
+/**
+ * What to call each preset in front of a person.
+ *
+ * The API's own identifiers are kebab-case slugs, and putting
+ * `north-american-phone-number` in a dropdown is an implementation detail
+ * leaking into someone's face. Plural, because a redaction removes every match
+ * rather than one.
+ */
+export const REDACTION_PRESET_LABELS: Record<RedactionPreset, string> = {
+  'social-security-number': 'Social security numbers',
+  'credit-card-number': 'Credit card numbers',
+  'email-address': 'Email addresses',
+  'north-american-phone-number': 'Phone numbers (North America)',
+  'international-phone-number': 'Phone numbers (international)',
+  date: 'Dates',
+  url: 'Web addresses',
+  ipv4: 'IP addresses (v4)',
+  ipv6: 'IP addresses (v6)',
+  'mac-address': 'MAC addresses',
+  'us-zip-code': 'US ZIP codes',
+  vin: 'Vehicle identification numbers',
+  time: 'Times',
+};
+
 export type Redaction =
   | { strategy: 'preset'; preset: RedactionPreset }
   | { strategy: 'regex'; regex: string; caseSensitive: boolean };
