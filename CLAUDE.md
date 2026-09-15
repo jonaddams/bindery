@@ -1638,9 +1638,30 @@ Two consequences worth carrying:
   is no email, so the comment body reaches the reader nowhere and they reply
   blind. The design quietly assumes email is available as the detail channel.
   `/settings` now says so where the choice is made, rather than leaving it to be
-  discovered on receipt. The real fix is a third channel behind auth — the
-  dashboard notifications idea, **now unblocked**: `/api/cron/sweep-mentions`
-  discovers mentions without anyone opening the document.
+  discovered on receipt. The third channel now exists — see below.
+- **The dashboard mention feed shows who and where, not what — and that is a
+  cost decision, not a privacy one.** The lock-screen argument that keeps comment
+  text out of an SMS does not apply: the feed is behind authentication, and being
+  mentioned already grants a `DocumentShare`, so the reader can open the document
+  and read the comment anyway.
+
+  The reason is that `ObservedComment` stores a `dwsCommentId` and no text.
+  **DWS is the one source of truth for comment bodies** and `lib/comment-sync.ts`
+  re-reads them per thread rather than duplicating them into Postgres, so
+  rendering text in the feed would mean a DWS fetch per thread on every dashboard
+  load — slow and billed. Showing it means caching the text, which reverses that
+  decision and deserves its own argument rather than arriving as a side effect of
+  building a list.
+
+  **Reading is explicit**, for the same reason the unread count is worth having
+  at all: marking on open was the friendlier option and the wrong one, because it
+  marks read what was never looked at, and a count nobody can trust is worse than
+  no count. Following the link marks nothing.
+
+  `readAt` is deliberately separate from `notifiedAt`. Those are different facts:
+  a text that was delivered may never have been read, and a mention read here may
+  never have been sent anywhere at all — someone who opted out of both other
+  channels sees it only here.
 - **STOP is handled in our webhook; HELP never reaches it.** Measured in
   production on 2026-09-14 by texting each keyword and reading both the database
   and Twilio's logs — the claim that both were handled here was half wrong.

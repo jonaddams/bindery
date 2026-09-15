@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { DashboardHeader } from '@/components/dashboard-header';
 import { DocumentList } from '@/components/document-list';
+import { MentionFeed } from '@/components/mention-feed';
 import { requireAuth } from '@/lib/auth';
 
 export default async function Dashboard() {
@@ -16,6 +17,10 @@ export default async function Dashboard() {
         {/* Main content */}
         <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
+            {/* Mentions, above the documents: being mentioned is the thing most
+                likely to want attention, and it renders nothing until loaded. */}
+            <MentionFeed />
+
             {/* Action bar */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 space-y-4 sm:space-y-0">
               <h2 className="text-lg font-medium text-foreground">Your Documents</h2>
