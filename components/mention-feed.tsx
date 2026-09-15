@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { formatRelativeTime } from '@/lib/relative-time';
 
 type Mention = {
   id: string;
@@ -134,8 +135,14 @@ export function MentionFeed() {
                 {mention.documentTitle}
               </Link>
 
-              <time className="text-xs text-subtle" dateTime={mention.createdAt}>
-                {new Date(mention.createdAt).toLocaleDateString()}
+              {/* `title` keeps the exact moment available on hover, since the
+                  relative form deliberately loses it. */}
+              <time
+                className="text-xs text-subtle"
+                dateTime={mention.createdAt}
+                title={new Date(mention.createdAt).toLocaleString()}
+              >
+                {formatRelativeTime({ iso: mention.createdAt })}
               </time>
 
               {!mention.read && (
