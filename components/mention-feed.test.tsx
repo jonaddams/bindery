@@ -63,6 +63,31 @@ describe('Showing mentions', () => {
     expect(await screen.findByText('2')).toBeVisible();
   });
 
+  // A bare date renders every mention from today identically, which is the one
+  // thing a feed of recent activity most needs to distinguish.
+  it('says how long ago rather than printing a date', async () => {
+    feed = {
+      mentions: [aMention({ createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString() })],
+      unread: 1,
+    };
+
+    render(<MentionFeed />);
+
+    expect(await screen.findByText('4 hours ago')).toBeVisible();
+  });
+
+  it('keeps the exact moment available on hover', async () => {
+    const createdAt = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+    feed = { mentions: [aMention({ createdAt })], unread: 1 };
+
+    render(<MentionFeed />);
+
+    expect(await screen.findByText('4 hours ago')).toHaveAttribute(
+      'title',
+      new Date(createdAt).toLocaleString()
+    );
+  });
+
   it('says so when there is nothing', async () => {
     feed = { mentions: [], unread: 0 };
 
