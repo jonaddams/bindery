@@ -103,6 +103,20 @@ describe('What a carrier reviewer has to be able to see', () => {
     expect(screen.getByRole('heading', { name: /text notifications/i })).toBeInTheDocument();
     expect(screen.getByText(/off/i)).toBeInTheDocument();
   });
+
+  // Choosing "Text only" means the comment body is delivered nowhere: the text
+  // names the document and never quotes the comment, and there is no email to
+  // carry it instead. That is a deliberate design — a text cannot carry someone
+  // else's words to a lock screen, and the filed sample message fixes the format
+  // permanently — but someone choosing it should not have to discover the
+  // consequence by receiving one.
+  it('warns that a text never quotes the comment, where the choice is made', () => {
+    renderUnregistered();
+
+    const textOnly = screen.getByLabelText(/text only/i).closest('label');
+
+    expect(textOnly).toHaveTextContent(/never quotes|does not quote|names the document/i);
+  });
 });
 
 describe('Registering a number', () => {

@@ -13,9 +13,19 @@ type NotificationSettingsProps = {
   programNumber: string;
 };
 
+/**
+ * The "Text only" hint says what a text will not contain, because that choice
+ * has a consequence the label does not suggest: a text names the document and
+ * never quotes the comment, so choosing it alone means the comment body arrives
+ * nowhere. Someone should learn that here rather than by receiving one.
+ */
 const CHANNEL_OPTIONS: ReadonlyArray<{ value: Channel; label: string; hint: string }> = [
   { value: 'EMAIL', label: 'Email only', hint: 'The default. No texts are sent.' },
-  { value: 'SMS', label: 'Text only', hint: 'Requires a registered number.' },
+  {
+    value: 'SMS',
+    label: 'Text only',
+    hint: 'Requires a registered number. A text names the document but never quotes the comment — open the link to read it.',
+  },
   { value: 'BOTH', label: 'Both email and text', hint: 'Requires a registered number.' },
 ];
 
