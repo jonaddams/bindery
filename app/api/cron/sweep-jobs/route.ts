@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { cronAuthFailure } from '@/lib/cron-auth';
 import { sweepJobs } from '@/lib/job-runner';
 
 /**
@@ -19,20 +20,10 @@ import { sweepJobs } from '@/lib/job-runner';
  * does real, billed work, so the secret is the only thing in front of it.
  */
 export async function GET(request: NextRequest) {
-  const configured = process.env.CRON_SECRET;
+  const refusal = cronAuthFailure(request);
 
-  if (!configured) {
-    // Refusing is the safe failure. Running openly when no secret is configured
-    // would leave billed work exposed on exactly the deployment least likely to
-    // notice — the one that forgot to set it.
-    return NextResponse.json(
-      { error: 'CRON_SECRET is not configured, so the sweep cannot be authenticated.' },
-      { status: 503 }
-    );
-  }
-
-  if (request.headers.get('authorization') !== `Bearer ${configured}`) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  if (refusal) {
+    return refusal;
   }
 
   try {

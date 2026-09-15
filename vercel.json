@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/sweep-jobs",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/sweep-mentions",
+      "schedule": "5-55/10 * * * *"
     }
   ]
 }

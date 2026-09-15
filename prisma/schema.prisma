@@ -133,6 +133,18 @@ model Document {
   /// the redacted copy with it. The copy is usually the one that matters, and
   /// deleting the source is often precisely the point of making it.
   derivedFromId    String?  @map("derived_from_id")
+  /// When the scheduled sweep last re-read this document's comments from DWS.
+  ///
+  /// The sweep exists because DWS has no comment webhooks: a mention is
+  /// otherwise only discovered when somebody opens the document, which may never
+  /// happen and certainly may not happen before the mentioned person wants to
+  /// know. Nothing tells us which documents changed, so the sweep cannot visit
+  /// "documents with recent activity" — it rotates through all of them, oldest
+  /// visit first, and this column is the cursor.
+  ///
+  /// Null sorts first, so a newly uploaded document is swept before anything
+  /// already seen.
+  lastSweptAt      DateTime? @map("last_swept_at")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -146,6 +158,8 @@ model Document {
   producedByJob  DocumentJob?     @relation("JobOutput")
 
   @@index([derivedFromId])
+  /// The sweep's query: the least recently visited documents, nulls first.
+  @@index([lastSweptAt])
   @@map("documents")
 }
 
