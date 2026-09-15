@@ -85,6 +85,28 @@ export async function requireAuth() {
 }
 
 /**
+ * Whether this person is currently wielding admin powers.
+ *
+ * **An allowlist, deliberately.** This used to read
+ * `role === 'ADMIN' && mode !== 'SELF'` — a denylist, which fails *open*: every
+ * value that was not `SELF` granted full access. The enum's third value, `USER`,
+ * therefore *widened* an admin's access while being the one mode whose purpose
+ * was to narrow it, and the only one besides `SELF` the API would accept. So the
+ * button labelled "User" gave more power than the one labelled "Admin".
+ *
+ * `USER` has since been removed from the enum, but the shape of the check is
+ * what actually matters: written this way, a mode nobody has handled yet
+ * restricts rather than grants. There are tests asserting exactly that against
+ * an unrecognised value.
+ *
+ * `ADMIN` is the only mode that grants, and `SELF` — the default — means "show
+ * me only what is mine", which is what an admin switches to in order to see the
+ * application as an ordinary user does.
+ */
+const isActingAsAdmin = (user: SessionUser): boolean =>
+  user.role === 'ADMIN' && user.currentImpersonationMode === 'ADMIN';
+
+/**
  * Which documents a user may read: their own, plus any shared with them.
  *
  * Admins acting as admins see everything and need no clause at all.
@@ -94,8 +116,8 @@ export async function requireAuth() {
  * document becomes visible. Combine with `AND`, as the list route does.
  */
 export function getEffectiveDocumentFilter(user: SessionUser): Prisma.DocumentWhereInput {
-  if (user.role === 'ADMIN' && user.currentImpersonationMode !== 'SELF') {
-    return {}; // ADMIN mode, or no mode recorded: every document.
+  if (isActingAsAdmin(user)) {
+    return {}; // Every document.
   }
 
   // Owned or shared. A mention grants a share, so a notification cannot point
@@ -116,7 +138,7 @@ export function getEffectiveDocumentFilter(user: SessionUser): Prisma.DocumentWh
  * Admins acting as admins can still change anything.
  */
 export function getDocumentWriteFilter(user: SessionUser): Prisma.DocumentWhereInput {
-  if (user.role === 'ADMIN' && user.currentImpersonationMode !== 'SELF') {
+  if (isActingAsAdmin(user)) {
     return {};
   }
 
@@ -127,5 +149,5 @@ export function getDocumentWriteFilter(user: SessionUser): Prisma.DocumentWhereI
  * Checks if a user can perform admin actions (create admin users, etc.)
  */
 export function canPerformAdminActions(user: SessionUser) {
-  return user.role === 'ADMIN' && user.currentImpersonationMode !== 'SELF';
+  return isActingAsAdmin(user);
 }

@@ -40,10 +40,10 @@ export function RoleSwitcher() {
       <div className="flex rounded-lg border border-gray-200 bg-white p-1">
         <button
           type="button"
-          onClick={() => handleModeSwitch('SELF')}
+          onClick={() => handleModeSwitch('ADMIN')}
           disabled={isSwitching}
           className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-            currentMode === 'SELF'
+            currentMode === 'ADMIN'
               ? 'bg-blue-100 text-blue-700'
               : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           } ${isSwitching ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -52,10 +52,10 @@ export function RoleSwitcher() {
         </button>
         <button
           type="button"
-          onClick={() => handleModeSwitch('USER')}
+          onClick={() => handleModeSwitch('SELF')}
           disabled={isSwitching}
           className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-            currentMode === 'USER'
+            currentMode === 'SELF'
               ? 'bg-blue-100 text-blue-700'
               : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           } ${isSwitching ? 'opacity-50 cursor-not-allowed' : ''}`}

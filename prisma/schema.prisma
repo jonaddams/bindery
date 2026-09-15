@@ -332,10 +332,22 @@ enum UserRole {
   USER
 }
 
+/// What an admin is currently acting as.
+///
+/// Two values for two states, which is what the feature always needed. A third,
+/// `USER`, was removed in September 2026: it meant the same thing as `SELF` —
+/// "restrict me to my own documents" — and having both guaranteed the confusion
+/// it caused. Because the access checks were written as a denylist
+/// (`mode !== 'SELF'`), `USER` reached the permissive branch and *widened* an
+/// admin's access, while being the mode whose whole purpose was to narrow it.
+///
+/// `SELF` is the default and grants nothing: it is what an admin switches to in
+/// order to see the application as an ordinary user does. `ADMIN` is the only
+/// mode that grants, and `lib/auth.ts` checks for it by name rather than by
+/// exclusion, so a value added here later restricts until somebody handles it.
 enum ImpersonationMode {
   SELF
   ADMIN
-  USER
 }
 
 enum NotificationChannel {

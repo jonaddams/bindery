@@ -44,10 +44,21 @@ describe('Document visibility', () => {
     expect(getEffectiveDocumentFilter(user)).toEqual({});
   });
 
-  it('shows an admin every document when no impersonation mode is recorded', () => {
-    const user = getMockSessionUser({ role: 'ADMIN', currentImpersonationMode: undefined });
+  // Inverted deliberately. This used to assert that a missing mode showed an
+  // admin every document, which was the fail-open behaviour rather than an
+  // intention: `undefined !== 'SELF'` was true, so absence granted everything.
+  // A permission check should never read "I don't know, so yes" — and the column
+  // defaults to SELF, so absence means a malformed session, not a choice.
+  it('limits an admin to their own documents when no impersonation mode is recorded', () => {
+    const user = getMockSessionUser({
+      id: 'admin_abc',
+      role: 'ADMIN',
+      currentImpersonationMode: undefined,
+    });
 
-    expect(getEffectiveDocumentFilter(user)).toEqual({});
+    expect(getEffectiveDocumentFilter(user)).toEqual({
+      OR: [{ ownerId: 'admin_abc' }, { shares: { some: { userId: 'admin_abc' } } }],
+    });
   });
 
   it('limits a regular user to their own documents regardless of impersonation mode', () => {
@@ -125,6 +136,53 @@ describe('Admin action permissions', () => {
 
   it('denies admin actions to a regular user', () => {
     const user = getMockSessionUser({ role: 'USER', currentImpersonationMode: 'ADMIN' });
+
+    expect(canPerformAdminActions(user)).toBe(false);
+  });
+});
+
+/**
+ * These three assert the same property from three angles, and it is the one that
+ * actually went wrong: the checks used to read `mode !== 'SELF'`, a denylist, so
+ * *any* value that was not SELF granted full access. The enum's third value,
+ * `USER`, therefore widened an admin's access — while being the one mode whose
+ * entire purpose was to narrow it, and the only one besides SELF the API would
+ * accept.
+ *
+ * Written against a deliberately invalid mode rather than against `USER`,
+ * because `USER` is gone and the point is the shape of the check, not that one
+ * value. A permission check has to fail closed: an unrecognised mode must
+ * restrict, never grant.
+ */
+describe('An unrecognised impersonation mode', () => {
+  // The cast is the point of the test: it stands in for a value the type system
+  // forbids today and a future migration might add.
+  const unknownMode = 'SOMETHING_NEW' as SessionUser['currentImpersonationMode'];
+
+  it('does not widen what an admin can read', () => {
+    const user = getMockSessionUser({
+      id: 'admin_abc',
+      role: 'ADMIN',
+      currentImpersonationMode: unknownMode,
+    });
+
+    expect(getEffectiveDocumentFilter(user)).toEqual({
+      OR: [{ ownerId: 'admin_abc' }, { shares: { some: { userId: 'admin_abc' } } }],
+    });
+  });
+
+  it('does not widen what an admin can change', () => {
+    const user = getMockSessionUser({
+      id: 'admin_abc',
+      role: 'ADMIN',
+      currentImpersonationMode: unknownMode,
+    });
+
+    expect(getDocumentWriteFilter(user)).toEqual({ ownerId: 'admin_abc' });
+  });
+
+  it('does not grant admin actions', () => {
+    const user = getMockSessionUser({ role: 'ADMIN', currentImpersonationMode: unknownMode });
 
     expect(canPerformAdminActions(user)).toBe(false);
   });
