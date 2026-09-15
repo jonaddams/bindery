@@ -1638,9 +1638,9 @@ Two consequences worth carrying:
   is no email, so the comment body reaches the reader nowhere and they reply
   blind. The design quietly assumes email is available as the detail channel.
   `/settings` now says so where the choice is made, rather than leaving it to be
-  discovered on receipt. The real fix is a third channel behind auth — see the
-  dashboard notifications idea, still blocked on the sweeper reconciling
-  mentions.
+  discovered on receipt. The real fix is a third channel behind auth — the
+  dashboard notifications idea, **now unblocked**: `/api/cron/sweep-mentions`
+  discovers mentions without anyone opening the document.
 - **STOP is handled in our webhook; HELP never reaches it.** Measured in
   production on 2026-09-14 by texting each keyword and reading both the database
   and Twilio's logs — the claim that both were handled here was half wrong.
@@ -1956,6 +1956,52 @@ library, also grep the provider's route prefix:
 ```bash
 grep -rn "/api/auth/" app components hooks lib
 ```
+
+## The two scheduled sweeps
+
+Both are in `vercel.json`, both take `CRON_SECRET` through `lib/cron-auth.ts`,
+and both refuse everything with 503 when that variable is unset — the safe
+failure, since a deployment that forgot to set one is the least likely to notice
+billed work left exposed.
+
+| Route | Schedule | What it is for |
+| --- | --- | --- |
+| `/api/cron/sweep-jobs` | `*/10` | durability backstop for `after()` — jobs never started, or left `RUNNING` by a runner that died |
+| `/api/cron/sweep-mentions` | `5-55/10` | finds mentions nobody has opened a document to discover |
+
+Kept separate, and offset by five minutes, for three reasons: they fail
+independently (a DWS outage should not stop document jobs running), they want
+different cadences, and firing both at the same minute puts two multi-second
+functions on the same instance for no reason.
+
+### The mention sweep rotates; it cannot select
+
+The obvious specification — "reconcile documents with recent activity" — is not
+implementable. Nothing tells us which documents changed: DWS has no comment
+webhooks, and `Document.updatedAt` tracks *our* writes, so a comment added in
+DWS touches nothing here. Activity is exactly what cannot be seen without asking.
+
+So each run takes the `MENTION_SWEEP_BATCH_SIZE` least-recently-swept documents
+ordered by `lastSweptAt` with nulls first, reconciles them, and stamps. Every
+document is visited eventually, a run's cost is bounded however many documents
+exist, and a newly uploaded one goes first.
+
+Two consequences worth knowing:
+
+- **`lastSweptAt` is stamped even when reconciling threw.** Otherwise one
+  permanently broken document parks at the head of the rotation for ever and
+  nothing behind it is swept again. Nothing is lost: the mention stays pending
+  until its notification is *accepted*, so the next rotation retries it.
+- **Discovery latency is one full rotation**, not one cron interval — ten
+  minutes for up to ten documents, twenty for twenty. The inline path still
+  fires the moment anyone opens the document, so this is the floor, not the
+  normal case. If that latency ever matters, raise the batch size before
+  shortening the schedule: the cost is per document, not per run.
+
+This is also the right home for notification volume. `notifyPendingMentions`
+sends serially and AT&T's A2P throughput is 0.25 messages per second, so a
+document with a dozen mentions would block a user-facing request on carrier rate
+limiting. Here nobody is waiting.
 
 ## Deploying a schema change
 
