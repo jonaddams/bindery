@@ -1613,9 +1613,34 @@ Two consequences worth carrying:
   number.** Weaker than the email token path on purpose — an SMS has nowhere to
   hide a per-thread token. Read the header comment in
   `app/api/webhooks/twilio/route.ts` before copying the pattern elsewhere.
-- **SMS never carries comment text.** A lock screen is a different privacy
-  posture from an inbox. `buildMentionSms` takes no `commentText` parameter, so
-  reintroducing one is a visible signature change rather than a quiet one.
+- **SMS never carries comment text, and that is now permanent rather than a
+  preference.** Raised again on 2026-09-15, after the first real mention
+  notification: the email carried the comment body and the text did not, which
+  reads like an omission worth fixing. It is not fixable.
+
+  **The filing closed it.** `lib/a2p-filing.test.ts` asserts `buildMentionSms(...)`
+  is byte-identical to filed sample #1. Adding comment text changes that message,
+  so the campaign would describe traffic the program does not send — and a
+  `VERIFIED` campaign cannot be edited, as the `VERIFY` keywords already proved.
+  Anyone proposing this is proposing to recreate that discrepancy knowingly.
+
+  The original reasons still stand underneath, and one is stronger than the
+  lock-screen argument: **the recipient's consent does not cover the author.**
+  Opting in to receive comment text means receiving *other people's* words on a
+  channel whose credential is a phone number — SIM swap, number recycling, and
+  last-thread-wins ambiguity on top. The person who wrote the comment never
+  agreed to that.
+
+  `buildMentionSms` takes no `commentText` parameter, so reintroducing one is a
+  visible signature change rather than a quiet one.
+
+  **The case this costs is "Text only".** With `notificationChannel = SMS` there
+  is no email, so the comment body reaches the reader nowhere and they reply
+  blind. The design quietly assumes email is available as the detail channel.
+  `/settings` now says so where the choice is made, rather than leaving it to be
+  discovered on receipt. The real fix is a third channel behind auth — see the
+  dashboard notifications idea, still blocked on the sweeper reconciling
+  mentions.
 - **STOP is handled in our webhook; HELP never reaches it.** Measured in
   production on 2026-09-14 by texting each keyword and reading both the database
   and Twilio's logs — the claim that both were handled here was half wrong.
