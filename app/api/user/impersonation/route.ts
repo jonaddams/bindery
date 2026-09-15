@@ -18,8 +18,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { mode }: { mode: ImpersonationMode } = body;
 
-    // Validate the impersonation mode
-    if (!['SELF', 'USER'].includes(mode)) {
+    // `SELF` and `ADMIN` are the whole enum. It previously accepted SELF|USER,
+    // which meant `ADMIN` — the only mode that grants anything — was unreachable
+    // through the API, while `USER` reached the permissive branch of a denylist
+    // check and granted everything. So the two selectable modes did the opposite
+    // of what they were named.
+    if (!['SELF', 'ADMIN'].includes(mode)) {
       return NextResponse.json({ error: 'Invalid impersonation mode' }, { status: 400 });
     }
 

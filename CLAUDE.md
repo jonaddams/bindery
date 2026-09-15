@@ -2024,6 +2024,48 @@ sends serially and AT&T's A2P throughput is 0.25 messages per second, so a
 document with a dozen mentions would block a user-facing request on carrier rate
 limiting. Here nobody is waiting.
 
+## Impersonation, and why a permission check is an allowlist
+
+An admin can act as an admin (`ADMIN`, sees everything) or as themselves
+(`SELF`, sees only their own documents). `SELF` is the default and the one to
+switch to in order to see the app as an ordinary user does.
+
+**It used to have a third mode, `USER`, and that is the whole cautionary tale.**
+The checks in `lib/auth.ts` read:
+
+```ts
+user.role === 'ADMIN' && user.currentImpersonationMode !== 'SELF'
+```
+
+A **denylist**, which fails *open*: every value that was not `SELF` granted full
+access. So `USER` — the mode whose entire purpose was to *narrow* an admin to a
+normal user's view — widened it instead. Four things followed from that one
+operator:
+
+- the API accepted only `SELF | USER`, leaving `ADMIN` unreachable;
+- the button labelled **"User"** therefore granted more power than the one
+  labelled **"Admin"**;
+- a missing mode also granted everything, because `undefined !== 'SELF'`;
+- `document-list.tsx` guarded delete with `=== 'ADMIN'` while the server used
+  `!== 'SELF'`, so the button was hidden in `USER` mode while the API would have
+  allowed the delete.
+
+The tests did not catch any of it because they only ever asserted `SELF` and
+`ADMIN`. `USER` — the one mode actually reachable besides `SELF` — was never
+tested.
+
+**The fix that matters is the shape, not the enum.** `isActingAsAdmin` now names
+the mode that grants (`=== 'ADMIN'`), so an unhandled value restricts instead of
+granting. `lib/auth.test.ts` asserts that against a deliberately unrecognised
+mode, which is the test that would have caught the original bug.
+
+`USER` was then dropped because it meant the same thing as `SELF` and keeping
+both invites the confusion back. Removing an enum value in Postgres means
+recreating the type, and **rows must be moved off the value before the cast** —
+see `20260915193000_drop_user_impersonation_mode`, which is hand-written because
+`prisma migrate dev --create-only` refuses to run non-interactively when a
+migration carries a warning, and dropping an enum value is one.
+
 ## Deploying a schema change
 
 **Nothing applies migrations for you.** `postinstall` runs `prisma generate`, not

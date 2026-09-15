@@ -99,16 +99,16 @@ describe('Changing impersonation mode', () => {
     update.mockResolvedValue({
       id: 'admin_1',
       role: 'ADMIN',
-      currentImpersonationMode: 'USER',
+      currentImpersonationMode: 'ADMIN',
     });
 
-    const response = await POST(postRequest({ mode: 'USER' }));
+    const response = await POST(postRequest({ mode: 'ADMIN' }));
 
     expect(response.status).toBe(200);
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'admin_1' },
-        data: { currentImpersonationMode: 'USER' },
+        data: { currentImpersonationMode: 'ADMIN' },
       })
     );
   });
@@ -117,7 +117,7 @@ describe('Changing impersonation mode', () => {
     requireAuth.mockResolvedValue({ user: { id: 'admin_1', role: 'ADMIN' } });
     update.mockRejectedValue(new Error('database is on fire'));
 
-    const response = await POST(postRequest({ mode: 'USER' }));
+    const response = await POST(postRequest({ mode: 'ADMIN' }));
 
     expect(response.status).toBe(500);
   });

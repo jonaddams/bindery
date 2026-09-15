@@ -73,7 +73,12 @@ export function DocumentList() {
     // User can delete if they own the document
     if (document.ownerId === session.user.id) return true;
 
-    // Admin can delete any document when in ADMIN mode
+    // Mirrors `isActingAsAdmin` in lib/auth.ts, which is the actual control —
+    // this only decides whether to draw the button. The two disagreed until
+    // September 2026: this read `=== 'ADMIN'` while the server read
+    // `!== 'SELF'`, so in the old USER mode the button was hidden while the API
+    // would have allowed the delete. Keep them in step, and remember that the
+    // server is the half that matters.
     if (session.user.role === 'ADMIN' && session.user.currentImpersonationMode === 'ADMIN') {
       return true;
     }

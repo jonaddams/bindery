@@ -80,21 +80,21 @@ describe('Switching impersonation mode', () => {
         Promise.resolve({
           ok: true,
           json: () =>
-            Promise.resolve({ success: true, user: { currentImpersonationMode: 'USER' } }),
+            Promise.resolve({ success: true, user: { currentImpersonationMode: 'ADMIN' } }),
         })
       )
     );
 
     await act(async () => {
-      await result.current.switchMode('USER');
+      await result.current.switchMode('ADMIN');
     });
 
     expect(fetch).toHaveBeenCalledWith(
       '/api/user/impersonation',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ mode: 'USER' }) })
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ mode: 'ADMIN' }) })
     );
     expect(refetch).toHaveBeenCalled();
-    expect(result.current.currentMode).toBe('USER');
+    expect(result.current.currentMode).toBe('ADMIN');
   });
 
   it('reports the server’s reason when a switch is refused', async () => {
@@ -112,7 +112,7 @@ describe('Switching impersonation mode', () => {
     );
 
     await act(async () => {
-      await expect(result.current.switchMode('USER')).rejects.toThrow(
+      await expect(result.current.switchMode('ADMIN')).rejects.toThrow(
         'Only admins can change impersonation mode'
       );
     });
