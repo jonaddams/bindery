@@ -13,8 +13,10 @@
  * FAILURE state(s)" — so the filing cannot be moved to meet a new name. Changing
  * this string would make the filing describe a program that no longer exists.
  *
- * Note what it is *not*: the repository (`dws-crud`), the package (`bindery`),
- * or the deployment host. Renaming any of those does not license changing this.
+ * Note what it is *not*: the repository, the package, or the deployment host.
+ * All three now happen to say "bindery" too, which makes it easy to forget they
+ * are separate things — they were renamed to match this, not the other way
+ * round, and renaming any of them again does not license changing this.
  */
 export const PRODUCT_NAME = 'Bindery';
 

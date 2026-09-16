@@ -45,7 +45,7 @@ const mention = (overrides: Partial<PendingNotification> = {}): PendingNotificat
 
 beforeEach(() => {
   vi.stubEnv('EMAIL_REPLY_DOMAIN', 'jonaddams.com');
-  vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://dws-crud.vercel.app');
+  vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://bindery.jonaddams.com');
 
   reconcileDocument.mockReset().mockResolvedValue([]);
   sendEmail.mockReset().mockResolvedValue({ id: 'msg_1' });
