@@ -178,6 +178,10 @@ A green test suite is **not** sufficient evidence for the Document Engine path.
 engine and no generated keypair. Confirm it reports `5 passed` rather than
 `5 skipped` before believing it.
 
+[testing-against-document-engine.md](testing-against-document-engine.md) is the
+full procedure, including the second user a mention test requires and the
+checklist for a change that touches the backend.
+
 ---
 
 ## Where the seam lives
