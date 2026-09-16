@@ -1,4 +1,4 @@
-import type { DwsComment } from '@/lib/dws-comments';
+import type { ThreadComment } from '@/lib/comments';
 import { type DirectoryUser, extractMentionedUserIds } from '@/lib/mentions';
 
 /**
@@ -13,13 +13,13 @@ import { type DirectoryUser, extractMentionedUserIds } from '@/lib/mentions';
  */
 
 export type ReconcileAction = {
-  comment: DwsComment;
+  comment: ThreadComment;
   mentionedUserIds: string[];
 };
 
 export type PlanReconcileOptions = {
   /** Every comment DWS currently holds for the thread. */
-  fetched: DwsComment[];
+  fetched: ThreadComment[];
   /** IDs of comments already recorded, mentions included. */
   observedCommentIds: string[];
   directory: DirectoryUser[];

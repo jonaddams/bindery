@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addComment, DwsRequestError } from '@/lib/dws-comments';
+import { addComment, CommentApiError } from '@/lib/comments';
 import {
   looksLikeVerificationCode,
   type RedeemResult,
@@ -295,7 +295,7 @@ export async function POST(request: Request) {
     // fails identically, for ever, and the sender is met with silence. So a
     // permanently-gone thread is answered like no thread at all — which is
     // what it is, from the sender's point of view.
-    if (error instanceof DwsRequestError && error.permanent) {
+    if (error instanceof CommentApiError && error.permanent) {
       return twiml(NO_THREAD_MESSAGE);
     }
 

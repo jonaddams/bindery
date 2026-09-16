@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import type { DwsComment } from '@/lib/dws-comments';
+import type { ThreadComment } from '@/lib/comments';
 import type { DirectoryUser } from '@/lib/mentions';
 import { planReconcile } from '@/lib/reconcile';
 
@@ -10,7 +10,7 @@ const DIRECTORY: DirectoryUser[] = [
   { id: 'user_bob', email: 'bob@nutrient.io', name: 'Bob Example' },
 ];
 
-const getComment = (id: string, overrides: Partial<DwsComment> = {}): DwsComment => ({
+const getComment = (id: string, overrides: Partial<ThreadComment> = {}): ThreadComment => ({
   id,
   text: '',
   authorUserId: 'user_alice',

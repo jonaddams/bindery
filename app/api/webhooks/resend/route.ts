@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { addComment } from '@/lib/dws-comments';
+import { addComment } from '@/lib/comments';
 import { extractReplyBody } from '@/lib/email-reply';
 import { prisma } from '@/lib/prisma';
 import { extractReplyToken } from '@/lib/reply-token';

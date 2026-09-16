@@ -202,6 +202,66 @@ describe.skipIf(!engineIsRunning)('against a real Document Engine', () => {
     expect(claims.user_id).toBe('user_integration');
   }, 60_000);
 
+  it('round-trips a comment thread through the ported comment layer', async () => {
+    // `lib/comments.ts` reaches the backend directly rather than through the
+    // provider, so nothing above proves it works here. This does, and it is the
+    // layer mentions are derived from: no comments read back means no mention,
+    // which means no email and no SMS.
+    const provider = documentProvider();
+    const pdf = await samplePdf();
+
+    const upload = await provider.uploadDocument({
+      file: new File([pdf], 'report.pdf', { type: 'application/pdf' }),
+    });
+    uploaded.push(upload.documentId);
+
+    const { createCommentThread, addComment, fetchComments, fetchThreadRoots } = await import(
+      '@/lib/comments'
+    );
+
+    const thread = await createCommentThread({
+      documentId: upload.documentId,
+      authorUserId: 'user_alice',
+      creatorName: 'Alice Example',
+      text: 'First, mentioning nobody.',
+      pageIndex: 0,
+      rects: [[50, 50, 200, 20]],
+      customData: { probe: 'thread' },
+    });
+
+    expect(thread.rootAnnotationId).not.toBe('');
+    expect(thread.commentId).not.toBe('');
+
+    await addComment({
+      documentId: upload.documentId,
+      rootAnnotationId: thread.rootAnnotationId,
+      authorUserId: 'user_bob',
+      creatorName: 'Bob Example',
+      text: 'A reply.',
+    });
+
+    // The root has to be discoverable, because the sweep finds threads this way
+    // before it can read any comment in them.
+    await expect(fetchThreadRoots({ documentId: upload.documentId })).resolves.toContain(
+      thread.rootAnnotationId
+    );
+
+    const comments = await fetchComments({
+      documentId: upload.documentId,
+      rootAnnotationId: thread.rootAnnotationId,
+    });
+
+    expect(comments.map((comment) => comment.text)).toEqual([
+      'First, mentioning nobody.',
+      'A reply.',
+    ]);
+    // `user_id` coming back as `createdBy` is what attributes a comment to a real
+    // account, and `customData` is where a mention's recipients are recorded.
+    expect(comments[0]?.authorUserId).toBe('user_alice');
+    expect(comments[0]?.customData).toEqual({ probe: 'thread' });
+    expect(comments[1]?.authorUserId).toBe('user_bob');
+  }, 120_000);
+
   it('explains a 403 that is really a missing component', async () => {
     // The engine answers 403 both for a bad token and for an endpoint it cannot
     // serve, and only the body separates them. Sending a wrong token proves the

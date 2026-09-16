@@ -44,6 +44,16 @@ carries a PostgreSQL and not just the engine.
 is what the guides document, and `Authorization: Bearer <API_AUTH_TOKEN>` is also
 accepted. Prefer the documented form — the undocumented one is not a promise.
 
+**The engine's native PDF worker can die, and the symptom looks like your bug.**
+Seen once after a few dozen operations: every request that parses a PDF — upload
+especially — began answering **500 with an empty body**, while `/healthcheck`
+stayed 200, the container stayed `healthy`, and HTML-to-PDF `/api/build` kept
+working, because that path is Chromium rather than the native worker. The give-
+away is in `docker logs`: `Shared.PSPDFKit.Protocol` raising
+`{:error, :closed}`. `docker restart document-engine-document-engine-1` fixes
+it. Check this before debugging your own code — the timing made it look exactly
+like a change I had just made.
+
 **Ports dodge two collisions.** macOS AirPlay Receiver (ControlCenter) already
 listens on 5000, so the engine is on **5001** — every Nutrient guide says 5000,
 so translate as you read. Its PostgreSQL is on **5434**, clear of the app's own.

@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import type { DwsComment } from '@/lib/dws-comments';
+import type { ThreadComment } from '@/lib/comments';
 import { type DirectoryUser, extractMentionedUserIds } from '@/lib/mentions';
 
 const DIRECTORY: DirectoryUser[] = [
@@ -10,7 +10,7 @@ const DIRECTORY: DirectoryUser[] = [
   { id: 'user_carol', email: 'carol@pspdfkit.com', name: null },
 ];
 
-const getComment = (overrides: Partial<DwsComment> = {}): DwsComment => ({
+const getComment = (overrides: Partial<ThreadComment> = {}): ThreadComment => ({
   id: 'cmt_1',
   text: '',
   authorUserId: 'user_alice',
@@ -20,7 +20,7 @@ const getComment = (overrides: Partial<DwsComment> = {}): DwsComment => ({
   ...overrides,
 });
 
-const mentionedIn = (comment: DwsComment) =>
+const mentionedIn = (comment: ThreadComment) =>
   extractMentionedUserIds({ comment, directory: DIRECTORY });
 
 describe('Mentions recorded by the viewer', () => {

@@ -1,12 +1,7 @@
 // @vitest-environment node
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  addComment,
-  createCommentThread,
-  fetchComments,
-  fetchThreadRoots,
-} from '@/lib/dws-comments';
+import { addComment, createCommentThread, fetchComments, fetchThreadRoots } from '@/lib/comments';
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -255,5 +250,111 @@ describe('Finding the threads in a document', () => {
     mockFetch(jsonResponse({ data: { annotations: [] } }));
 
     await expect(fetchThreadRoots({ documentId: 'doc_123' })).resolves.toEqual([]);
+  });
+});
+
+/**
+ * The same four operations against a self-hosted Document Engine.
+ *
+ * Verified against a running engine before being written down — see
+ * `docker/document-engine/README.md`. The payloads and the response shapes turn
+ * out to be identical on both backends, because the DWS Viewer API is built on
+ * Document Engine; what differs is the path, the credential, and the fact that
+ * creating a thread takes two calls instead of one.
+ */
+describe('Comments on a Document Engine backend', () => {
+  beforeEach(() => {
+    vi.stubEnv('NUTRIENT_TARGET', 'document-engine');
+    vi.stubEnv('NUTRIENT_BASE_URL', 'http://localhost:5001');
+    vi.stubEnv('DOCUMENT_ENGINE_API_TOKEN', 'engine-token');
+  });
+
+  it('creates a thread in two calls, because there is no document-level comments endpoint', async () => {
+    // DWS roots the annotation and writes the first comment in one POST to
+    // /comments. Document Engine answers 404 there, so the annotation is created
+    // first and the comment appended to it.
+    const fetchMock = mockFetch(
+      jsonResponse({ data: { annotation_id: 'anno_engine' } }),
+      jsonResponse({ data: { comments: [{ id: 'comment_engine' }] } })
+    );
+
+    const result = await createCommentThread(THREAD_ROOT);
+
+    expect(result).toEqual({ rootAnnotationId: 'anno_engine', commentId: 'comment_engine' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const [annotationUrl] = fetchMock.mock.calls[0] ?? [];
+    expect(String(annotationUrl)).toBe('http://localhost:5001/api/documents/doc_123/annotations');
+    expect(String(lastRequest(fetchMock).url)).toBe(
+      'http://localhost:5001/api/documents/doc_123/annotations/anno_engine/comments'
+    );
+  });
+
+  it('sends the annotation without the wrapper DWS requires', async () => {
+    const fetchMock = mockFetch(
+      jsonResponse({ data: { annotation_id: 'anno_engine' } }),
+      jsonResponse({ data: { comments: [{ id: 'comment_engine' }] } })
+    );
+
+    await createCommentThread(THREAD_ROOT);
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body));
+
+    // DWS wants `{annotation: {user_id, content}}`; the engine wants the fields
+    // at the top level and rejects the wrapper with an error that merely echoes
+    // the payload back, which is a long way to walk for a misplaced key.
+    expect(body.annotation).toBeUndefined();
+    expect(body.user_id).toBe('user_alice');
+    expect(body.content.isCommentThreadRoot).toBe(true);
+  });
+
+  it('authenticates with the engine token, not a bearer key', async () => {
+    const fetchMock = mockFetch(jsonResponse({ data: { comments: [] } }));
+
+    await fetchComments({ documentId: 'doc_123', rootAnnotationId: 'anno_root' });
+
+    const { url, headers } = lastRequest(fetchMock);
+
+    expect(url).toBe('http://localhost:5001/api/documents/doc_123/annotations/anno_root/comments');
+    expect(headers.Authorization).toBe('Token token=engine-token');
+    // Both backends answer a wildcard Accept with 406, and Node's fetch sends
+    // one by default.
+    expect(headers.Accept).toBe('application/json');
+  });
+
+  it('appends a comment at the engine path', async () => {
+    const fetchMock = mockFetch(jsonResponse({ data: { comments: [{ id: 'comment_2' }] } }));
+
+    const result = await addComment({
+      documentId: 'doc_123',
+      rootAnnotationId: 'anno_root',
+      authorUserId: 'user_bob',
+      creatorName: 'Bob Example',
+      text: 'Agreed.',
+    });
+
+    expect(result).toEqual({ commentId: 'comment_2' });
+    expect(lastRequest(fetchMock).url).toBe(
+      'http://localhost:5001/api/documents/doc_123/annotations/anno_root/comments'
+    );
+  });
+
+  it('reads thread roots from the engine, which answers in the DWS shape', async () => {
+    const fetchMock = mockFetch(
+      jsonResponse({
+        data: {
+          annotations: [
+            { id: 'anno_root', content: { isCommentThreadRoot: true } },
+            { id: 'anno_plain', content: { isCommentThreadRoot: false } },
+          ],
+        },
+      })
+    );
+
+    await expect(fetchThreadRoots({ documentId: 'doc_123' })).resolves.toEqual(['anno_root']);
+    expect(lastRequest(fetchMock).url).toBe(
+      'http://localhost:5001/api/documents/doc_123/annotations'
+    );
   });
 });
