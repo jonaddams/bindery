@@ -108,6 +108,12 @@ runs in evaluation mode: every feature, but a watermark on output, a 50 MB input
 cap and a 100 s processing timeout. Fine for development. Notice the watermark
 before concluding a redaction went wrong.
 
+With a key there is no watermark. Put it in `.env.local` as
+`DOCUMENT_ENGINE_LICENSE_KEY` — `docker/document-engine/up.sh` reads it from
+there and passes it to the engine as `ACTIVATION_KEY`, printing which mode it is
+starting in. The app itself never reads this variable; it is the engine's
+licence, not a credential for talking to it.
+
 ### Running one locally
 
 `docker/document-engine/` has a compose file that brings up an engine and its

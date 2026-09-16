@@ -40,10 +40,17 @@ services:
       document-engine-db:
         condition: service_healthy
     environment:
-      # No ACTIVATION_KEY: the engine runs in evaluation mode, which allows every
-      # feature but stamps a watermark on output, caps input at 50 MB and times
-      # processing out at 100 s. Fine for local work; note the watermark before
-      # concluding a redaction went wrong.
+      # Licensed when `DOCUMENT_ENGINE_LICENSE_KEY` is set — `up.sh` reads it from
+      # the shell or from the repo's .env.local — and evaluation mode when it is
+      # not. Evaluation allows every feature but stamps a watermark on output,
+      # caps input at 50 MB and times processing out at 100 s; note the watermark
+      # before concluding a redaction went wrong.
+      #
+      # An empty value is safe, which is not something to assume on this project:
+      # the engine reports "ACTIVATION_KEY is unset" for a blank string and falls
+      # back to evaluation rather than failing. Checked against 1.18.1, because
+      # a documented-but-empty variable has twice taken production down here.
+      ACTIVATION_KEY: ${DOCUMENT_ENGINE_LICENSE_KEY:-}
       PGUSER: de
       PGPASSWORD: de
       PGDATABASE: document_engine

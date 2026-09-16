@@ -156,7 +156,9 @@ database. The response body names the missing component; the status alone is
 indistinguishable from a bad token.
 
 **A red "For Evaluation Purposes Only" watermark** is expected without a licence
-key. Do not read it as a broken redaction.
+key. Do not read it as a broken redaction. Set `DOCUMENT_ENGINE_LICENSE_KEY` in
+`.env.local` to run licensed instead — `up.sh` prints which mode it started in,
+so check that line rather than inferring it from the output.
 
 `docker/document-engine/README.md` has the rest, including the verified endpoint
 table.
