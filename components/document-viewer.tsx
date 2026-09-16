@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { NutrientTarget } from '@/lib/nutrient-config';
+import { viewerLoadOptions } from '@/lib/viewer-load-options';
 
 type DocumentViewerProps = {
   documentId: string;
@@ -19,6 +21,12 @@ export function DocumentViewer({ documentId, className = '' }: DocumentViewerPro
   const [error, setError] = useState<ViewerError | null>(null);
   const [viewerData, setViewerData] = useState<{
     sessionToken: string;
+    // Which backend is storing this document, and where the browser reaches it.
+    // The two need different `load()` calls, and the browser cannot tell them
+    // apart on its own — see `lib/viewer-load-options.ts`.
+    target: NutrientTarget;
+    serverUrl: string | null;
+    backendDocumentId: string;
     mentionableUsers: NutrientMentionableUser[];
     currentUserName: string | null;
   } | null>(null);
@@ -67,6 +75,11 @@ export function DocumentViewer({ documentId, className = '' }: DocumentViewerPro
 
       setViewerData({
         sessionToken: data.sessionToken,
+        // Defaulting to DWS keeps an older server — one deployed before the
+        // route said which backend it uses — working exactly as before.
+        target: data.target === 'document-engine' ? 'document-engine' : 'dws',
+        serverUrl: data.serverUrl ?? null,
+        backendDocumentId: data.documentId,
         mentionableUsers,
         currentUserName: data.currentUserName ?? null,
       });
@@ -115,12 +128,16 @@ export function DocumentViewer({ documentId, className = '' }: DocumentViewerPro
         throw new Error('Empty session token received from API');
       }
 
-      const instance = await window.NutrientViewer.load({
-        container: containerRef.current,
-        session: viewerData.sessionToken,
-        useCDN: true, // Load assets from CDN to avoid future deprecation warnings
-        mentionableUsers: viewerData.mentionableUsers,
-      });
+      const instance = await window.NutrientViewer.load(
+        viewerLoadOptions({
+          container: containerRef.current,
+          target: viewerData.target,
+          serverUrl: viewerData.serverUrl,
+          documentId: viewerData.backendDocumentId,
+          sessionToken: viewerData.sessionToken,
+          mentionableUsers: viewerData.mentionableUsers,
+        })
+      );
 
       // Without this the reader's own comments are labelled "Anonymous". DWS
       // records the author from the session's `user_id` either way; this is the

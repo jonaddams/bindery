@@ -7,7 +7,11 @@ const getEffectiveDocumentFilter = vi.fn();
 const findFirstDocument = vi.fn();
 const updateDocument = vi.fn();
 const createSession = vi.fn();
+const resolvedConfig = vi.fn();
 
+vi.mock('@/lib/nutrient-config', () => ({
+  nutrientConfig: () => resolvedConfig(),
+}));
 vi.mock('@/lib/auth', () => ({
   requireAuth: (...a: unknown[]) => requireAuth(...a),
   getEffectiveDocumentFilter: (...a: unknown[]) => getEffectiveDocumentFilter(...a),
@@ -44,6 +48,11 @@ beforeEach(() => {
   });
   updateDocument.mockReset().mockResolvedValue({});
   createSession.mockReset().mockResolvedValue({ sessionToken: 'jwt_abc' });
+  resolvedConfig.mockReset().mockReturnValue({
+    target: 'dws',
+    baseUrl: 'https://api.nutrient.io',
+    limits: { requestTimeoutMs: 30_000 },
+  });
 });
 
 describe('Opening a document in the viewer', () => {
@@ -85,5 +94,33 @@ describe('Opening a document in the viewer', () => {
 
     expect(response.status).toBe(404);
     expect(createSession).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The viewer cannot work out which backend it is talking to, and the two need
+ * different `NutrientViewer.load()` calls: DWS takes a `session`, Document
+ * Engine takes `documentId` + `authPayload` + `serverUrl`. A session token alone
+ * is not enough to open a document, so the backend has to be named here.
+ */
+describe('Telling the viewer which backend it is talking to', () => {
+  it('names DWS, which needs no server URL because the token carries everything', async () => {
+    const body = await (await get()).json();
+
+    expect(body.target).toBe('dws');
+    expect(body.serverUrl).toBeNull();
+  });
+
+  it('gives Document Engine the URL the browser must reach it on', async () => {
+    resolvedConfig.mockReturnValue({
+      target: 'document-engine',
+      baseUrl: 'http://localhost:5001',
+      limits: { requestTimeoutMs: 30_000 },
+    });
+
+    const body = await (await get()).json();
+
+    expect(body.target).toBe('document-engine');
+    expect(body.serverUrl).toBe('http://localhost:5001');
   });
 });

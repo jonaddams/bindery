@@ -48,9 +48,19 @@ declare global {
 
   interface Window {
     NutrientViewer: {
+      /**
+       * `session` is the DWS shape; `documentId` + `authPayload` + `serverUrl`
+       * is the Document Engine one. Both are optional here because which set
+       * applies depends on the backend — `lib/viewer-load-options.ts` is what
+       * decides, and keeps the two from being mixed.
+       */
       load(config: {
         container: HTMLElement;
-        session: string;
+        session?: string;
+        documentId?: string;
+        authPayload?: { jwt: string };
+        serverUrl?: string;
+        instant?: boolean;
         useCDN?: boolean; // Load assets from CDN instead of local. Requires viewer >= 1.9.1
         baseUrl?: string; // Custom base URL for self-hosted assets
         mentionableUsers?: NutrientMentionableUser[];

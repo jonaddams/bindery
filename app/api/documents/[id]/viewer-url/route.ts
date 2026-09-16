@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { getEffectiveDocumentFilter, requireAuth, type SessionUser } from '@/lib/auth';
 import { documentProvider } from '@/lib/document-provider';
+import { nutrientConfig } from '@/lib/nutrient-config';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -52,9 +53,23 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       data: { sessionToken },
     });
 
+    const config = nutrientConfig();
+
     return NextResponse.json({
       sessionToken,
       documentId: document.documentEngineId,
+      // The two backends need different `NutrientViewer.load()` calls — DWS
+      // takes a `session`, Document Engine takes `documentId` + `authPayload` +
+      // `serverUrl` — and the browser has no way to tell which it is talking to.
+      // The provider seam stops at the server, so this is where the choice
+      // crosses over to the client.
+      target: config.target,
+      // Only Document Engine needs this, and it must be the URL the *browser*
+      // can reach the engine on. That is usually, but not necessarily, the one
+      // this process uses: an engine addressed as a container hostname from the
+      // server is not resolvable from a laptop. If the two ever have to differ,
+      // this is the line that needs a separate public URL rather than the seam.
+      serverUrl: config.target === 'document-engine' ? config.baseUrl : null,
       // The viewer has no other way to learn this. The session JWT carries
       // `user_id`, so DWS records who authored a comment, but the name shown
       // beside it is a separate string the SDK defaults to null — which it
