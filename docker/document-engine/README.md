@@ -22,9 +22,27 @@ validator at `/dashboard/jwt-validation`.
 allows every feature but stamps a watermark on output, caps input at 50 MB and
 times processing out at 100 s. The `nutrient-document-engine` agent skill says
 startup fails without `ACTIVATION_KEY`; against `pspdfkit/document-engine:latest`
-(1.18.1) on 2026-09-16 it did not. Set `ACTIVATION_KEY` in the compose file to
-drop the watermark. **Note the watermark before concluding a redaction went
-wrong.**
+(1.18.1) on 2026-09-16 it did not. **Note the watermark before concluding a
+redaction went wrong.**
+
+**With a key, there is no watermark.** Set `DOCUMENT_ENGINE_LICENSE_KEY` in the
+repo's `.env.local` and `up.sh` passes it to the engine as `ACTIVATION_KEY`; it
+prints which mode it is starting in, so you never have to guess. Verified by
+rendering a document and finding no watermark text in its content.
+
+Two things seen while wiring that up, both harmless and both confusing the first
+time:
+
+- the engine logs `licensed for demo use` rather than "licensed", and drops the
+  evaluation-limits block entirely;
+- it may log `[error] Unknown license feature: ...` for a feature the key grants
+  and this version does not know. It starts and runs normally.
+
+**An empty `ACTIVATION_KEY` is safe**, which on this project is worth checking
+rather than assuming: the engine reports `ACTIVATION_KEY is unset` for a blank
+string and falls back to evaluation mode instead of failing. So the compose
+file's `${DOCUMENT_ENGINE_LICENSE_KEY:-}` default cannot break a checkout that
+has no key.
 
 **A 403 from `/api/documents` usually does not mean what it says.** Three
 different conditions are distinguishable only by the body:
