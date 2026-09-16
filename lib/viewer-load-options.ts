@@ -61,7 +61,16 @@ export const viewerLoadOptions = (input: ViewerLoadInput): ViewerLoadOptions => 
       // readers. Without it the viewer opens but nothing a reader writes is
       // persisted back, which is the app's whole point.
       instant: true,
-      serverUrl,
+      // The SDK rejects a URL without a trailing slash outright, and says so:
+      // "`serverUrl` must have a slash at the end". `NUTRIENT_BASE_URL` is
+      // deliberately an origin *without* one, because every server-side call
+      // site appends its own path — so the slash is added here rather than by
+      // relaxing that rule and risking `//api/documents` everywhere else.
+      serverUrl: serverUrl.endsWith('/') ? serverUrl : `${serverUrl}/`,
+      // The document comes from the engine; the SDK's own assets still come from
+      // the CDN, same as the DWS path. Saying so explicitly silences a
+      // deprecation warning about auto-detection going away.
+      useCDN: true,
       mentionableUsers,
     };
   }
