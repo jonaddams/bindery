@@ -34,15 +34,19 @@ describe('buildMentionSms', () => {
   });
 
   it('keeps the full title and the intact link even at production-realistic length, accepting concatenated SMS instead of truncating', () => {
-    // A real NEXT_PUBLIC_APP_URL on a vercel.app host plus a long author name
-    // pushes fixed overhead well past 160 chars on its own. Truncating the
-    // title used to "fix" this by inserting U+2026, which is outside the GSM
-    // 03.38 alphabet and forces the whole message into UCS-2 (70-char
-    // segments) — costing more segments than the untruncated GSM original.
-    // The message must carry the full title and URL regardless.
+    // The real production host plus a long author name pushes fixed overhead
+    // well past 160 chars on its own. Truncating the title used to "fix" this by
+    // inserting U+2026, which is outside the GSM 03.38 alphabet and forces the
+    // whole message into UCS-2 (70-char segments) — costing more segments than
+    // the untruncated GSM original. The message must carry the full title and
+    // URL regardless.
+    //
+    // The host is the one production actually serves from and the one filed with
+    // the A2P campaign, so "production-realistic" here is literal rather than
+    // an approximation.
     const longTitle =
       'Amended and Restated Master Services Agreement Between Acme Corporation and Example Industries LLC';
-    const productionUrl = 'https://dws-crud.vercel.app/documents/clx1a2b3c4d5e6f7g8h9i0j1k';
+    const productionUrl = 'https://bindery.jonaddams.com/documents/clx1a2b3c4d5e6f7g8h9i0j1k';
     const longAuthorName = 'Alexandria Montgomery-Fitzgerald';
 
     const message = buildMentionSms({
