@@ -22,11 +22,11 @@ vi.mock('@/lib/phone-verification', () => ({
   redeemPhoneVerification: (...a: unknown[]) => redeemPhoneVerification(...a),
   looksLikeVerificationCode: (...a: unknown[]) => looksLikeVerificationCode(...a),
 }));
-// Keeps the real DwsRequestError: the route distinguishes a permanently-gone
+// Keeps the real CommentApiError: the route distinguishes a permanently-gone
 // thread from a transient fault with `instanceof`, so a hand-rolled stand-in
 // would pass the test while failing in production.
-vi.mock('@/lib/dws-comments', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/dws-comments')>('@/lib/dws-comments');
+vi.mock('@/lib/comments', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/comments')>('@/lib/comments');
   return { ...actual, addComment: (...a: unknown[]) => addComment(...a) };
 });
 vi.mock('@/lib/prisma', () => ({
@@ -44,7 +44,7 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 
-import { DwsRequestError } from '@/lib/dws-comments';
+import { CommentApiError } from '@/lib/comments';
 import { REGISTERED_MESSAGE } from '@/lib/sms-program';
 
 const { POST } = await import('@/app/api/webhooks/twilio/route');
@@ -102,7 +102,7 @@ describe('when the thread a reply belongs to is gone', () => {
   it('tells the sender rather than failing forever, when DWS says the thread is gone', async () => {
     withNotifiedMention();
     addComment.mockRejectedValue(
-      new DwsRequestError({ path: '/comments', status: 404, raw: 'Resource not found.' })
+      new CommentApiError({ path: '/comments', status: 404, raw: 'Resource not found.' })
     );
 
     const response = await POST(post(inboundReply));
@@ -114,7 +114,7 @@ describe('when the thread a reply belongs to is gone', () => {
   it('releases the claim so the number is not stuck', async () => {
     withNotifiedMention();
     addComment.mockRejectedValue(
-      new DwsRequestError({ path: '/comments', status: 404, raw: 'gone' })
+      new CommentApiError({ path: '/comments', status: 404, raw: 'gone' })
     );
 
     await POST(post(inboundReply));
@@ -127,7 +127,7 @@ describe('when the thread a reply belongs to is gone', () => {
   it('still asks Twilio to retry when DWS is merely unwell', async () => {
     withNotifiedMention();
     addComment.mockRejectedValue(
-      new DwsRequestError({ path: '/comments', status: 503, raw: 'unwell' })
+      new CommentApiError({ path: '/comments', status: 503, raw: 'unwell' })
     );
 
     expect((await POST(post(inboundReply))).status).toBe(500);

@@ -27,8 +27,14 @@
  * push the two-keys detail out to every caller.
  */
 
+import { sign } from 'jsonwebtoken';
 import { type NutrientConfig, type NutrientTarget, nutrientConfig } from '@/lib/nutrient-config';
-import { processorApiKey, viewerApiKey } from '@/lib/nutrient-key';
+import {
+  documentEngineApiToken,
+  documentEngineJwtPrivateKey,
+  processorApiKey,
+  viewerApiKey,
+} from '@/lib/nutrient-key';
 
 export type DocumentUpload = {
   documentId: string;
@@ -342,6 +348,196 @@ const createDwsProvider = (config: NutrientConfig): DocumentProvider => {
 };
 
 /**
+ * How long a signed Document Engine session is good for.
+ *
+ * Shorter than the DWS session lifetime because the cost of a short one is
+ * different: DWS charges a network round trip to mint another, while this is a
+ * local signature. There is no reason to hand out a token that outlives the
+ * reading of a document.
+ */
+const ENGINE_SESSION_LIFETIME_SECONDS = 60 * 60;
+
+/**
+ * A 403 from Document Engine means one of two unrelated things, and only the
+ * body distinguishes them.
+ *
+ * An engine started without PostgreSQL boots quite happily in "processing-only
+ * mode" — `/api/build` keeps working — and answers **403** to every document
+ * route, naming the component it lacks. A wrong token answers 403 with nothing.
+ * So the natural reading of a 403, "my credentials are wrong", sends you to
+ * check a token that was never the problem.
+ *
+ * This is the same lesson the DWS side already carries in a different costume:
+ * read the shape of a 403 before blaming permissions.
+ */
+const describeEngineFailure = async (response: Response, what: string): Promise<string> => {
+  const raw = await response.text();
+
+  if (response.status === 403 && raw.includes('required components')) {
+    return (
+      `${what} was refused with 403, but the token is not the problem: this engine is ` +
+      `missing a component it needs for that endpoint. It answered: ${raw}. An engine ` +
+      'started without PostgreSQL runs in processing-only mode, where /api/build works ' +
+      'and every document route answers exactly this.'
+    );
+  }
+
+  return `${what} failed: ${response.status} - ${raw}`;
+};
+
+/**
+ * Talk to a self-hosted Document Engine.
+ *
+ * Verified against a real engine rather than written from documentation — see
+ * `docker/document-engine/README.md`, which brings one up and lists what was
+ * checked. The differences from DWS turned out to be smaller than expected
+ * everywhere except viewer sessions, which differ in kind rather than in detail.
+ */
+const createDocumentEngineProvider = (config: NutrientConfig): DocumentProvider => {
+  const documentsUrl = `${config.baseUrl}/api/documents`;
+  const buildUrl = `${config.baseUrl}/api/build`;
+
+  // Resolved once, at construction, so a missing token fails while the provider
+  // is being built rather than midway through a job. The engine also accepts
+  // `Bearer`, but only this spelling is documented.
+  const token = documentEngineApiToken();
+  const authorization = `Token token=${token}`;
+
+  const signal = (): AbortSignal => AbortSignal.timeout(config.limits.requestTimeoutMs);
+
+  /**
+   * Sign a viewer session locally.
+   *
+   * A local function rather than a method so `uploadDocument` and
+   * `createViewerSession` cannot drift apart on what a session contains — the
+   * same shape the DWS provider uses for the same reason.
+   */
+  const signSession = (documentId: string, userId?: string): string =>
+    sign(
+      {
+        document_id: documentId,
+        // `read-document` alone leaves the viewer read-only, which would mean
+        // nobody can comment — the thing this app is for.
+        permissions: ['read-document', 'write', 'download'],
+        ...(userId ? { user_id: userId } : {}),
+      },
+      documentEngineJwtPrivateKey(),
+      { algorithm: 'RS256', expiresIn: ENGINE_SESSION_LIFETIME_SECONDS }
+    );
+
+  return {
+    target: 'document-engine',
+
+    async uploadDocument(options: { file: File }): Promise<DocumentUpload> {
+      const { file } = options;
+
+      // Multipart, unlike the DWS upload, which takes raw bytes with a
+      // Content-Type. No Content-Type header here: fetch supplies it with the
+      // boundary, and setting it by hand omits the boundary.
+      const body = new FormData();
+      body.set('file', file);
+
+      const response = await fetch(documentsUrl, {
+        method: 'POST',
+        headers: { Authorization: authorization },
+        body,
+        signal: signal(),
+      });
+
+      if (!response.ok) {
+        throw new Error(await describeEngineFailure(response, 'Document upload'));
+      }
+
+      const parsed = asRecord(await response.json());
+      const documentId = readString(parsed, ['data.document_id', 'document_id']);
+
+      if (!documentId) {
+        throw new Error(`Upload returned no document ID. Response was: ${JSON.stringify(parsed)}`);
+      }
+
+      // No session comes back and none is needed: signing one is local and free,
+      // so unlike the DWS path there is nothing here that can half-fail.
+      return { documentId, sessionToken: signSession(documentId) };
+    },
+
+    /**
+     * **No request is made.** DWS mints a session through its API; Document
+     * Engine only ever verifies one, holding the public half of the keypair. So
+     * this is a signature, not a round trip, and it cannot fail for any reason
+     * other than a missing key.
+     */
+    async createViewerSession(options: {
+      documentId: string;
+      userId?: string;
+    }): Promise<ViewerSession> {
+      const { documentId, userId } = options;
+
+      return { documentId, sessionToken: signSession(documentId, userId) };
+    },
+
+    async downloadDocument(options: { documentId: string }): Promise<ArrayBuffer> {
+      // `source=true` matters: without it the engine returns a *rendered* PDF,
+      // a few hundred bytes larger than what was uploaded. A processing job must
+      // act on the original, not on a re-render of it.
+      const response = await fetch(`${documentsUrl}/${options.documentId}/pdf?source=true`, {
+        headers: { Authorization: authorization },
+        signal: signal(),
+      });
+
+      if (!response.ok) {
+        throw new Error(await describeEngineFailure(response, 'Document download'));
+      }
+
+      return response.arrayBuffer();
+    },
+
+    async processDocument(options: {
+      source: Uint8Array<ArrayBuffer>;
+      filename: string;
+      instructions: ProcessInstructions;
+    }): Promise<ArrayBuffer> {
+      const { source, filename, instructions } = options;
+
+      const body = new FormData();
+      body.set('instructions', JSON.stringify(instructions));
+
+      const partName = instructions.parts[0]?.file ?? 'document';
+      body.set(partName, new File([source], filename, { type: 'application/pdf' }));
+
+      const response = await fetch(buildUrl, {
+        // The same token as everything else: Document Engine has no second key,
+        // so the whole class of DWS failure where the wrong key reaches /build
+        // cannot happen here.
+        headers: { Authorization: authorization },
+        method: 'POST',
+        body,
+        signal: signal(),
+      });
+
+      if (response.ok) {
+        return response.arrayBuffer();
+      }
+
+      throw new Error(await describeProcessorFailure(response));
+    },
+
+    async deleteDocument(options: { documentId: string }): Promise<void> {
+      const response = await fetch(`${documentsUrl}/${options.documentId}`, {
+        method: 'DELETE',
+        headers: { Authorization: authorization },
+        signal: signal(),
+      });
+
+      if (response.ok) {
+        return;
+      }
+
+      throw new Error(await describeEngineFailure(response, 'Document delete'));
+    },
+  };
+};
+
+/**
  * The provider for the running process.
  *
  * Built per call rather than cached at module load: resolving the API key throws
@@ -352,12 +548,7 @@ export const documentProvider = (): DocumentProvider => {
   const config = nutrientConfig();
 
   if (config.target === 'document-engine') {
-    throw new Error(
-      'NUTRIENT_TARGET is "document-engine", but no Document Engine client is implemented yet. ' +
-        'It needs its own paths (/api/documents rather than /viewer/documents), its own token ' +
-        'authentication, and locally signed viewer JWTs instead of a session endpoint. ' +
-        'Set NUTRIENT_TARGET=dws to use the hosted API.'
-    );
+    return createDocumentEngineProvider(config);
   }
 
   return createDwsProvider(config);

@@ -1,4 +1,4 @@
-import type { DwsComment } from '@/lib/dws-comments';
+import type { ThreadComment } from '@/lib/comments';
 
 /**
  * Working out who a comment mentions.
@@ -73,7 +73,7 @@ const mentionsInText = (text: string, directory: DirectoryUser[]): string[] => {
 };
 
 export type ExtractMentionedUserIdsOptions = {
-  comment: DwsComment;
+  comment: ThreadComment;
   directory: DirectoryUser[];
 };
 

@@ -1434,6 +1434,75 @@ Replaying one end-to-end needs the reply token in the event to exist in whicheve
 database the app is pointed at; tokens minted in production are not in the local
 database.
 
+## Document Engine — verified behaviour
+
+Established on 2026-09-16 by running one locally and driving the real provider
+against it. `docker/document-engine/` brings it up; its README carries the
+endpoint table. As with the DWS notes below, these are observations, and one of
+them contradicts the `nutrient-document-engine` agent skill.
+
+- **It needs no licence key.** The engine starts in **evaluation mode**: every
+  feature, but a watermark on output, a 50 MB input cap and a 100 s processing
+  timeout. The agent skill says startup fails without `ACTIVATION_KEY`; against
+  `pspdfkit/document-engine:latest` (1.18.1) it does not. **Notice the watermark
+  before concluding a redaction went wrong.**
+- **Without PostgreSQL it runs in "processing-only mode"**, where `/api/build`
+  works normally and *every* document route answers **403**. So a 403 here means
+  one of three unrelated things and only the response body separates them:
+
+  | Condition | Status | How to tell |
+  | --- | --- | --- |
+  | No `Authorization` header | **401** | — |
+  | Wrong token | **403** | empty body |
+  | Endpoint disabled, no database | **403** | body names `[:persistent_db_storage]` |
+
+  This is the DWS lesson — read the shape of a 403 before blaming credentials —
+  arriving in a new costume. `describeEngineFailure` in `lib/document-provider.ts`
+  exists to say so at the point of failure.
+- **One token, not two.** `API_AUTH_TOKEN` opens the document routes *and*
+  `/api/build`, so the Viewer/Processor split that causes so much trouble on DWS
+  has no equivalent here and there is no second key to send by mistake.
+- **`Authorization: Token token=<t>` is the documented form, and `Bearer <t>`
+  also works.** Only the first is documented; prefer it, because an undocumented
+  allowance is not a promise.
+- **`POST /api/build` takes the same instructions as DWS `/build`**, including
+  the two-action redaction shape (`createRedactions` then `applyRedactions`).
+  Verified to genuinely remove text, by extracting the output's text and finding
+  no match, not by looking at it.
+- **`GET /api/documents/{id}/pdf` mirrors the undocumented DWS download**, and
+  **`?source=true` is what returns the uploaded bytes**. Without it the engine
+  returns a re-render a few hundred bytes larger, so a processing job would
+  quietly work on a different document from the one that was stored.
+- **A viewer session is signed locally and never requested.** RS256 (or RS512 /
+  ES256 / ES512) over claims `exp`, `document_id`, `permissions`
+  (`read-document`, `write`, `download`, `cover-image`, or `"all"`), optionally
+  `user_id`, `creator_name`, `layer`, `default_group`. The engine holds only
+  `JWT_PUBLIC_KEY`, so it can verify and can never mint. `createViewerSession`
+  therefore makes **no network call**, and a test asserts exactly that.
+  `user_id` is the same claim name DWS uses, so comment attribution carries
+  across backends unchanged.
+- **The client differs too, which the seam did not anticipate.** DWS loads with
+  `NutrientViewer.load({ container, session })`; Document Engine needs
+  `{ container, documentId, authPayload: { jwt }, instant: true, serverUrl }`.
+  Passing an engine JWT as `session` fails silently — the viewer just never
+  loads. `lib/viewer-load-options.ts` owns that choice, and
+  `/api/documents/[id]/viewer-url` tells the browser which backend it is talking
+  to, because the browser cannot tell.
+- **`serverUrl` must be reachable from the browser**, not merely from the
+  server. An engine addressed by container hostname is not resolvable from a
+  laptop. They coincide today; if they ever stop, that one line needs a separate
+  public URL rather than the seam being changed.
+- **Omitting `serverUrl` is worse than an error.** The SDK infers it from where
+  its own script was served — the Nutrient CDN — so the browser would look for a
+  self-hosted deployment's documents on Nutrient's servers. `viewerLoadOptions`
+  throws instead.
+- **macOS AirPlay Receiver holds port 5000**, which every Nutrient guide assumes.
+  The compose file publishes **5001**; translate as you read the docs.
+- **`lib/document-provider.integration.test.ts` runs against a live engine and
+  skips when none is reachable.** That skip is load-bearing: a suite that silently
+  passes when the engine is down would be worse than no suite, so confirm it
+  *ran* — `4 passed`, not `4 skipped` — before believing it.
+
 ## DWS Processor API — verified behaviour
 
 Established by probing the live API on 2026-09-14 while building the job seam.
@@ -1564,6 +1633,12 @@ Two consequences worth carrying:
   `app/api/auth/[...nextauth]/route`. Nothing in the source tree was wrong.
   `rm -rf .next` clears it. The generated type file is not regenerated merely
   because the route vanished.
+- **`TODO.md` is gitignored**, so it exists only in the main checkout and reaches
+  no worktree and no clone. This surprises because this file and the project's
+  memory both cite it constantly ("TODO §21") as though it were shared. Two
+  consequences: a worktree-isolated session cannot update it, so changes to it
+  have to be made in the main checkout and cannot ride along in the branch; and
+  nobody else who clones this repository has ever seen it.
 - **A worktree has no `.env.local`**, because it is gitignored and so exists only
   in the checkout it was created in. Every Prisma CLI command then fails with
   "the `datasource.url` property is required", which reads like a

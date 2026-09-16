@@ -1,0 +1,67 @@
+# Document Engine, locally, for exercising the Document Engine half of
+# `lib/document-provider.ts` against a real server rather than against mocks.
+#
+# Two things about this file are not obvious:
+#
+# 1. **Document Engine needs PostgreSQL to store documents at all.** Without
+#    PG* configured it boots in "processing-only mode" and every
+#    `/api/documents` route answers **403 with a body explaining it is
+#    disabled** — which reads exactly like an auth failure and is not. That is
+#    why there is a database here and not just one container.
+#
+# 2. **`JWT_PUBLIC_KEY` is read from the shell environment**, exported from
+#    `secrets/jwt-public.pem` by `up.sh`. Document Engine only ever *verifies*
+#    JWTs; the private key stays with the app, which is what makes a viewer
+#    session a local signing operation with no network call.
+#
+# Ports avoid two collisions found the hard way: macOS AirPlay Receiver
+# (ControlCenter) already listens on 5000, and the app's own PostgreSQL is on
+# 5432/5433.
+services:
+  document-engine-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: de
+      POSTGRES_PASSWORD: de
+      POSTGRES_DB: document_engine
+    ports:
+      - '5434:5432'
+    volumes:
+      - document-engine-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U de -d document_engine']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  document-engine:
+    image: pspdfkit/document-engine:latest
+    depends_on:
+      document-engine-db:
+        condition: service_healthy
+    environment:
+      # No ACTIVATION_KEY: the engine runs in evaluation mode, which allows every
+      # feature but stamps a watermark on output, caps input at 50 MB and times
+      # processing out at 100 s. Fine for local work; note the watermark before
+      # concluding a redaction went wrong.
+      PGUSER: de
+      PGPASSWORD: de
+      PGDATABASE: document_engine
+      PGHOST: document-engine-db
+      PGPORT: 5432
+      API_AUTH_TOKEN: ${DOCUMENT_ENGINE_API_TOKEN:-secret}
+      SECRET_KEY_BASE: ${DOCUMENT_ENGINE_SECRET_KEY_BASE:-local-development-secret-key-base-not-for-production-use}
+      JWT_PUBLIC_KEY: ${DOCUMENT_ENGINE_JWT_PUBLIC_KEY:?run ./up.sh, which exports this from secrets/jwt-public.pem}
+      JWT_ALGORITHM: RS256
+      DASHBOARD_USERNAME: dashboard
+      DASHBOARD_PASSWORD: dashboard
+    ports:
+      - '5001:5000'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:5000/healthcheck || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  document-engine-db:

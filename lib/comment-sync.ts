@@ -1,4 +1,4 @@
-import { fetchComments, fetchThreadRoots } from '@/lib/dws-comments';
+import { fetchComments, fetchThreadRoots } from '@/lib/comments';
 import type { DirectoryUser } from '@/lib/mentions';
 import { prisma } from '@/lib/prisma';
 import { planReconcile } from '@/lib/reconcile';

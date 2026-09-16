@@ -11,7 +11,7 @@ const updateInbound = vi.fn();
 const deleteInbound = vi.fn();
 const fetchInboundEmail = vi.fn();
 
-vi.mock('@/lib/dws-comments', () => ({ addComment: (...args: unknown[]) => addComment(...args) }));
+vi.mock('@/lib/comments', () => ({ addComment: (...args: unknown[]) => addComment(...args) }));
 vi.mock('@/lib/resend', () => ({
   fetchInboundEmail: (...args: unknown[]) => fetchInboundEmail(...args),
 }));
