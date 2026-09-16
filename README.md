@@ -79,6 +79,11 @@ Engine and **skips when none is reachable** — so it passes silently in a check
 with no engine running. If you are relying on it, confirm it reports passes
 rather than skips.
 
+Anything touching the document backend should be checked against **both**
+backends before it ships:
+[docs/testing-against-document-engine.md](docs/testing-against-document-engine.md)
+is the procedure, and standing an engine up is two commands.
+
 ## Further reading
 
 - [docs/backends.md](docs/backends.md) — configuring DWS or Document Engine

@@ -1434,6 +1434,23 @@ Replaying one end-to-end needs the reply token in the event to exist in whicheve
 database the app is pointed at; tokens minted in production are not in the local
 database.
 
+## Both backends must be tested, and one of them needs Docker
+
+**Any change touching the document backend is checked against DWS *and* a local
+Document Engine before it is called done.** The seam supports both, so a change
+verified against one is half verified. `docs/testing-against-document-engine.md`
+is the procedure; it takes two commands to stand an engine up.
+
+The trap this exists to prevent: **`lib/document-provider.integration.test.ts`
+skips when no engine is reachable**, so it passes silently in a checkout that has
+none. A green suite is not evidence. Confirm it reports `5 passed` and not
+`5 skipped`.
+
+And the server-side seam is not the whole of it — the two backends need different
+`NutrientViewer.load()` calls, so anything touching the viewer needs a browser.
+That is how the trailing-slash bug was found, with the unit suite green and a
+test of mine asserting the wrong thing.
+
 ## Document Engine — verified behaviour
 
 Established on 2026-09-16 by running one locally and driving the real provider
