@@ -21,6 +21,8 @@
  * campaign's sample messages in the same change.
  */
 
+import { PRODUCT_NAME } from '@/lib/product';
+
 /**
  * The program name every outbound message leads with.
  *
@@ -28,8 +30,13 @@
  * reading a lock screen sees this before anything else. Note it is the
  * *program* name — not the repository, not the deployment host. Renaming either
  * of those does not license changing this.
+ *
+ * Derived from `PRODUCT_NAME` rather than repeating it, so the program and the
+ * product cannot be renamed apart. The browser title disagreed with this for
+ * months, which is the cheap version of the disagreement that got the campaign
+ * rejected twice.
  */
-export const PROGRAM_NAME = 'Bindery';
+export const PROGRAM_NAME = PRODUCT_NAME;
 
 const prefixed = (message: string): string => `${PROGRAM_NAME}: ${message}`;
 

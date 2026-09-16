@@ -1,4 +1,4 @@
-// Global TypeScript declarations for the Nutrient API CRUD App
+// Global TypeScript declarations for Bindery
 
 // The session shape used to be augmented here and again in
 // types/next-auth.d.ts. Both are gone: `SessionUser` in lib/auth.ts is the
