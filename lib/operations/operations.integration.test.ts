@@ -90,6 +90,14 @@ const scannedPdf = async (): Promise<Uint8Array<ArrayBuffer>> => {
  * confirmed empirically (via `pdftotext`, independent of this engine) that the
  * wrapped scan has no real text layer and gains a `/Type0` composite font plus
  * a `/ToUnicode` CMap only after the `ocr` action actually runs.
+ *
+ * **This is a sufficient marker for this fixture, not a general test for "does
+ * this PDF have text".** A standard-14 font with WinAnsiEncoding needs no
+ * `/ToUnicode` and is perfectly copyable, so a born-digital PDF using one would
+ * read `false` here despite having real text — the premise would then pass for
+ * the wrong reason. Safe today only because `scannedPdf()` below is
+ * image-only: no fonts at all before OCR runs. Do not reuse this helper
+ * against a different fixture without re-checking that assumption.
  */
 const hasSelectableTextLayer = (pdf: Uint8Array<ArrayBuffer>): boolean => {
   const buffer = Buffer.from(pdf);
@@ -183,7 +191,12 @@ describe.skipIf(!engineIsRunning)('Operations against a real engine', () => {
     // The structural proof this action ran: a real, copyable text layer now
     // exists where there was none.
     expect(hasSelectableTextLayer(processedBytes)).toBe(true);
-    // And the recognised text is the text the scan actually shows.
+    // User-facing smoke check only. Extraction OCRs on demand (see
+    // `hasSelectableTextLayer`'s comment above), so this cannot distinguish a
+    // real text layer from extraction recognising one on the fly, and nothing
+    // here proves OCR recognised the *correct* text rather than extraction's
+    // own fallback independently arriving at the same reading. That gap is
+    // accepted, not a defect — it just should not be described as covered.
     expect(await extractText(processedBytes)).toContain('SCANNED PROBE TEXT');
   }, 180_000);
 });
