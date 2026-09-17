@@ -671,6 +671,15 @@ export const OCR_LANGUAGES = ['english'] as const;
 
 export type OcrLanguage = (typeof OCR_LANGUAGES)[number];
 
+/**
+ * What to call each language in front of a person, mirroring
+ * `REDACTION_PRESET_LABELS`. A map rather than a transform, because the API's
+ * identifiers are its own and need not be presentable.
+ */
+export const OCR_LANGUAGE_LABELS: Record<OcrLanguage, string> = {
+  english: 'English',
+};
+
 const isLanguage = (value: unknown): value is OcrLanguage =>
   typeof value === 'string' && OCR_LANGUAGES.includes(value as OcrLanguage);
 
@@ -684,7 +693,10 @@ export const ocrOperation: DocumentOperation = {
       kind: 'select',
       name: 'language',
       label: 'Language',
-      options: OCR_LANGUAGES.map((language) => ({ value: language, label: 'English' })),
+      options: OCR_LANGUAGES.map((language) => ({
+        value: language,
+        label: OCR_LANGUAGE_LABELS[language],
+      })),
       defaultValue: 'english',
     },
   ],
@@ -1085,6 +1097,11 @@ export const PDFA_CONFORMANCE_LEVELS = ['pdfa-2b'] as const;
 
 export type PdfaConformance = (typeof PDFA_CONFORMANCE_LEVELS)[number];
 
+/** Presentable names for the API's own identifiers, as OCR and redaction do. */
+export const PDFA_CONFORMANCE_LABELS: Record<PdfaConformance, string> = {
+  'pdfa-2b': 'PDF/A-2b',
+};
+
 const isConformance = (value: unknown): value is PdfaConformance =>
   typeof value === 'string' && PDFA_CONFORMANCE_LEVELS.includes(value as PdfaConformance);
 
@@ -1098,7 +1115,10 @@ export const pdfaOperation: DocumentOperation = {
       kind: 'select',
       name: 'conformance',
       label: 'Conformance level',
-      options: PDFA_CONFORMANCE_LEVELS.map((level) => ({ value: level, label: 'PDF/A-2b' })),
+      options: PDFA_CONFORMANCE_LEVELS.map((level) => ({
+        value: level,
+        label: PDFA_CONFORMANCE_LABELS[level],
+      })),
       defaultValue: 'pdfa-2b',
     },
   ],
