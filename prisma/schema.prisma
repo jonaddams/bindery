@@ -365,6 +365,9 @@ enum NotificationChannel {
 /// requirement rather than a preference.
 enum DocumentJobKind {
   REDACTION
+  OCR
+  WATERMARK
+  PDFA
 }
 
 /// Where a job has got to.

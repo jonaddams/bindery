@@ -7,7 +7,7 @@ const getDocumentWriteFilter = vi.fn();
 const getEffectiveDocumentFilter = vi.fn();
 const findFirstDocument = vi.fn();
 const findManyJobs = vi.fn();
-const createRedactionJob = vi.fn();
+const createDocumentJob = vi.fn();
 const enqueue = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
@@ -16,7 +16,7 @@ vi.mock('@/lib/auth', () => ({
   getEffectiveDocumentFilter: (...a: unknown[]) => getEffectiveDocumentFilter(...a),
 }));
 vi.mock('@/lib/document-jobs', () => ({
-  createRedactionJob: (...a: unknown[]) => createRedactionJob(...a),
+  createDocumentJob: (...a: unknown[]) => createDocumentJob(...a),
 }));
 vi.mock('@/lib/job-runner', () => ({
   jobRunner: () => ({ enqueue: (...a: unknown[]) => enqueue(...a) }),
@@ -56,7 +56,7 @@ beforeEach(() => {
   getEffectiveDocumentFilter.mockReturnValue({});
   findFirstDocument.mockResolvedValue({ id: 'doc_1', title: 'Board Pack' });
   findManyJobs.mockResolvedValue([]);
-  createRedactionJob.mockResolvedValue({
+  createDocumentJob.mockResolvedValue({
     id: 'job_1',
     status: 'PENDING',
     kind: 'REDACTION',
@@ -85,7 +85,7 @@ describe('Queueing a redaction', () => {
   it('records who asked for it', async () => {
     await post(aRedaction);
 
-    expect(createRedactionJob).toHaveBeenCalledWith(
+    expect(createDocumentJob).toHaveBeenCalledWith(
       expect.objectContaining({ documentId: 'doc_1', requestedById: 'user_jon' })
     );
   });
@@ -109,7 +109,7 @@ describe('Queueing a redaction', () => {
     const response = await post(aRedaction);
 
     expect(response.status).toBe(404);
-    expect(createRedactionJob).not.toHaveBeenCalled();
+    expect(createDocumentJob).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
   });
 
@@ -120,14 +120,14 @@ describe('Queueing a redaction', () => {
     expect(await response.json()).toEqual(
       expect.objectContaining({ error: expect.stringContaining('star-sign') })
     );
-    expect(createRedactionJob).not.toHaveBeenCalled();
+    expect(createDocumentJob).not.toHaveBeenCalled();
   });
 
   it('refuses an operation it does not perform', async () => {
     const response = await post({ kind: 'TRANSLATION', strategy: 'preset', preset: 'date' });
 
     expect(response.status).toBe(400);
-    expect(createRedactionJob).not.toHaveBeenCalled();
+    expect(createDocumentJob).not.toHaveBeenCalled();
   });
 
   it('refuses a body that is not JSON at all', async () => {

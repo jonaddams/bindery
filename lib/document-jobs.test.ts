@@ -24,7 +24,7 @@ const {
   MAX_JOB_ATTEMPTS,
   STALE_JOB_MINUTES,
   claimJob,
-  createRedactionJob,
+  createDocumentJob,
   failJob,
   findReclaimableJobs,
   succeedJob,
@@ -39,12 +39,13 @@ beforeEach(() => {
   updateJob.mockResolvedValue({});
 });
 
-describe('queueing a redaction', () => {
-  it('records what was asked for, so a finished job can still say what it removed', async () => {
-    await createRedactionJob({
+describe('queueing a job', () => {
+  it('records what was asked for, so a finished job can still say what it did', async () => {
+    await createDocumentJob({
       documentId: 'doc_1',
       requestedById: 'user_alice',
-      redaction: { strategy: 'preset', preset: 'social-security-number' },
+      kind: 'REDACTION',
+      parameters: { strategy: 'preset', preset: 'social-security-number' },
     });
 
     expect(createJobRow).toHaveBeenCalledWith(
@@ -60,14 +61,32 @@ describe('queueing a redaction', () => {
   });
 
   it('starts pending, because nothing has run yet', async () => {
-    await createRedactionJob({
+    await createDocumentJob({
       documentId: 'doc_1',
       requestedById: 'user_alice',
-      redaction: { strategy: 'preset', preset: 'email-address' },
+      kind: 'REDACTION',
+      parameters: { strategy: 'preset', preset: 'email-address' },
     });
 
     const { data } = createJobRow.mock.calls[0][0];
     expect(data.status ?? 'PENDING').toBe('PENDING');
+  });
+
+  it('records the operation kind it was asked for', async () => {
+    createJobRow.mockResolvedValue({ id: 'job_1' });
+
+    await createDocumentJob({
+      documentId: 'doc_1',
+      requestedById: 'user_1',
+      kind: 'OCR',
+      parameters: { kind: 'OCR', language: 'english' },
+    });
+
+    expect(createJobRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ kind: 'OCR' }),
+      })
+    );
   });
 });
 

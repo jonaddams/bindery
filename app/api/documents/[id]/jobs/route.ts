@@ -5,7 +5,7 @@ import {
   requireAuth,
   type SessionUser,
 } from '@/lib/auth';
-import { createRedactionJob } from '@/lib/document-jobs';
+import { createDocumentJob } from '@/lib/document-jobs';
 import { jobRunner } from '@/lib/job-runner';
 import { parseRedactionRequest } from '@/lib/operations/redaction';
 import { prisma } from '@/lib/prisma';
@@ -74,10 +74,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
-    const job = await createRedactionJob({
+    const job = await createDocumentJob({
       documentId: document.id,
       requestedById: session.user.id,
-      redaction: redaction.redaction,
+      kind: 'REDACTION',
+      parameters: body,
     });
 
     // A failure to enqueue is not a failure to accept. The job is recorded, and
