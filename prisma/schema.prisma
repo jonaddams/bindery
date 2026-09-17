@@ -358,13 +358,17 @@ enum NotificationChannel {
 
 /// Which operation a job performs.
 ///
-/// One member today. Redaction was chosen as the first Processor operation
-/// because it composes with the comment and mention layer already here — redact,
-/// then discuss the redacted copy — rather than standing alone as a bolted-on
+/// Four members today. Redaction was merely first among them, chosen because it
+/// composes with the comment and mention layer already here — redact, then
+/// discuss the redacted copy — rather than standing alone as a bolted-on
 /// feature, and because it is the operation where "never mutate the input" is a
-/// requirement rather than a preference.
+/// requirement rather than a preference. OCR, watermark and PDF/A conversion
+/// followed once the Processor API's shapes for each were verified.
 enum DocumentJobKind {
   REDACTION
+  OCR
+  WATERMARK
+  PDFA
 }
 
 /// Where a job has got to.

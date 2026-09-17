@@ -51,10 +51,11 @@ export type ViewerSession = {
  * A Build instruction document: what to do, to which uploaded part, producing what.
  *
  * Deliberately loose here. The provider's job is to carry instructions to the
- * backend and bytes back; what constitutes a valid instruction is the operation's
- * own business, and `lib/redaction.ts` owns that for the one operation there is.
- * Typing every action the Processor API offers would be a large speculative
- * surface with one caller.
+ * backend and bytes back; what constitutes a valid instruction is each
+ * operation's own business — `lib/operations/redaction.ts`, `ocr.ts`,
+ * `watermark.ts` and `pdfa.ts` each own that for their own operation. Typing
+ * every action the Processor API offers would be a large speculative surface
+ * for four callers to share.
  */
 export type ProcessInstructions = {
   parts: readonly { file: string }[];

@@ -7,8 +7,9 @@ const getDocumentWriteFilter = vi.fn();
 const getEffectiveDocumentFilter = vi.fn();
 const findFirstDocument = vi.fn();
 const findManyJobs = vi.fn();
-const createRedactionJob = vi.fn();
+const createDocumentJob = vi.fn();
 const enqueue = vi.fn();
+const resolvedConfig = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   requireAuth: (...a: unknown[]) => requireAuth(...a),
@@ -16,7 +17,7 @@ vi.mock('@/lib/auth', () => ({
   getEffectiveDocumentFilter: (...a: unknown[]) => getEffectiveDocumentFilter(...a),
 }));
 vi.mock('@/lib/document-jobs', () => ({
-  createRedactionJob: (...a: unknown[]) => createRedactionJob(...a),
+  createDocumentJob: (...a: unknown[]) => createDocumentJob(...a),
 }));
 vi.mock('@/lib/job-runner', () => ({
   jobRunner: () => ({ enqueue: (...a: unknown[]) => enqueue(...a) }),
@@ -26,6 +27,9 @@ vi.mock('@/lib/prisma', () => ({
     document: { findFirst: (...a: unknown[]) => findFirstDocument(...a) },
     documentJob: { findMany: (...a: unknown[]) => findManyJobs(...a) },
   },
+}));
+vi.mock('@/lib/nutrient-config', () => ({
+  nutrientConfig: () => resolvedConfig(),
 }));
 
 const { GET, POST } = await import('@/app/api/documents/[id]/jobs/route');
@@ -56,11 +60,16 @@ beforeEach(() => {
   getEffectiveDocumentFilter.mockReturnValue({});
   findFirstDocument.mockResolvedValue({ id: 'doc_1', title: 'Board Pack' });
   findManyJobs.mockResolvedValue([]);
-  createRedactionJob.mockResolvedValue({
+  createDocumentJob.mockResolvedValue({
     id: 'job_1',
     status: 'PENDING',
     kind: 'REDACTION',
     createdAt: new Date('2026-09-14T12:00:00Z'),
+  });
+  resolvedConfig.mockReset().mockReturnValue({
+    target: 'dws',
+    baseUrl: 'https://api.nutrient.io',
+    limits: { requestTimeoutMs: 120_000 },
   });
 });
 
@@ -85,7 +94,7 @@ describe('Queueing a redaction', () => {
   it('records who asked for it', async () => {
     await post(aRedaction);
 
-    expect(createRedactionJob).toHaveBeenCalledWith(
+    expect(createDocumentJob).toHaveBeenCalledWith(
       expect.objectContaining({ documentId: 'doc_1', requestedById: 'user_jon' })
     );
   });
@@ -109,7 +118,7 @@ describe('Queueing a redaction', () => {
     const response = await post(aRedaction);
 
     expect(response.status).toBe(404);
-    expect(createRedactionJob).not.toHaveBeenCalled();
+    expect(createDocumentJob).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
   });
 
@@ -120,14 +129,34 @@ describe('Queueing a redaction', () => {
     expect(await response.json()).toEqual(
       expect.objectContaining({ error: expect.stringContaining('star-sign') })
     );
-    expect(createRedactionJob).not.toHaveBeenCalled();
+    expect(createDocumentJob).not.toHaveBeenCalled();
   });
 
   it('refuses an operation it does not perform', async () => {
     const response = await post({ kind: 'TRANSLATION', strategy: 'preset', preset: 'date' });
 
     expect(response.status).toBe(400);
-    expect(createRedactionJob).not.toHaveBeenCalled();
+    expect(createDocumentJob).not.toHaveBeenCalled();
+  });
+
+  it('refuses a kind no operation implements', async () => {
+    const response = await post({ kind: 'TELEPORTATION' });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('accepts a kind the registry implements for this backend', async () => {
+    // 202, not 201 as the brief's own draft had it: the route's documented and
+    // tested contract is "taken on, not done" (see the first test in this
+    // describe block), and a redaction job is recorded, not completed
+    // synchronously.
+    const response = await post({
+      kind: 'REDACTION',
+      strategy: 'preset',
+      preset: 'email-address',
+    });
+
+    expect(response.status).toBe(202);
   });
 
   it('refuses a body that is not JSON at all', async () => {

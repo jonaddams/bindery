@@ -6,7 +6,7 @@ import {
   parseRedactionRequest,
   REDACTION_PRESET_LABELS,
   REDACTION_PRESETS,
-} from '@/lib/redaction';
+} from '@/lib/operations/redaction';
 
 describe('Describing a redaction to the Processor API', () => {
   it('redacts a preset pattern across the whole document', () => {

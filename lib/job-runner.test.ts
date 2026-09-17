@@ -18,6 +18,24 @@ vi.mock('@/lib/document-jobs', async () => {
   };
 });
 
+const operationsFor = vi.fn();
+
+vi.mock('@/lib/operations', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/operations')>('@/lib/operations');
+  return { ...actual, operationsFor: (...a: unknown[]) => operationsFor(...a) };
+});
+
+// The real lookup, used as the default so every test other than the ones below
+// exercises registry behaviour unchanged.
+const { operationsFor: realOperationsFor } =
+  await vi.importActual<typeof import('@/lib/operations')>('@/lib/operations');
+
+const resolvedConfig = vi.fn();
+
+vi.mock('@/lib/nutrient-config', () => ({
+  nutrientConfig: () => resolvedConfig(),
+}));
+
 const findUniqueDocument = vi.fn();
 const createDocument = vi.fn();
 
@@ -76,6 +94,8 @@ beforeEach(() => {
   succeedJob.mockResolvedValue({});
   failJob.mockResolvedValue({});
   findReclaimableJobs.mockResolvedValue([]);
+  operationsFor.mockImplementation(realOperationsFor);
+  resolvedConfig.mockReturnValue({ target: 'dws' });
   findUniqueDocument.mockResolvedValue(aDocument());
   createDocument.mockResolvedValue({ id: 'doc_2' });
   downloadDocument.mockResolvedValue(sourceBytes);
@@ -198,6 +218,52 @@ describe('when a job cannot be run', () => {
     failJob.mockRejectedValue(new Error('database unreachable'));
 
     await expect(runJob({ jobId: 'job_1' })).rejects.toThrow(/database unreachable/);
+  });
+});
+
+describe('when a job kind has no operation', () => {
+  it('refuses a job whose kind no operation implements, naming the kind', async () => {
+    // The registry is complete today (every DocumentJobKind has an operation),
+    // so there is no real unregistered kind left to use as a fixture. The
+    // lookup miss is mocked instead of fabricated with `as DocumentJobKind` —
+    // that would assert a bad value is a valid kind, which is exactly the
+    // unjustified assertion this codebase forbids. What's under test is the
+    // `if (!operation)` branch in job-runner.ts, not which kind caused it.
+    operationsFor.mockReturnValueOnce([]);
+    claimJob.mockResolvedValue(aJob({ kind: 'REDACTION' }));
+
+    await runJob({ jobId: 'job_1' });
+
+    expect(failJob).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('REDACTION') })
+    );
+  });
+
+  // The runner used to resolve a job's operation with `operationFor(kind)` —
+  // a lookup against every registered operation, regardless of backend — while
+  // the route and the page both gate through `operationsFor(target)`. Inert
+  // while every operation lists both backends; live the moment one does not: a
+  // job queued while pointed at one backend must not silently run against
+  // another that may not implement it, which would surface as an opaque
+  // mid-job failure from the vendor's API rather than one of ours.
+  it('refuses a job whose kind exists but the configured backend does not perform, naming both', async () => {
+    resolvedConfig.mockReturnValue({ target: 'document-engine' });
+    operationsFor.mockReturnValueOnce([]);
+    claimJob.mockResolvedValue(aJob({ kind: 'REDACTION' }));
+
+    await runJob({ jobId: 'job_1' });
+
+    expect(operationsFor).toHaveBeenCalledWith('document-engine');
+    expect(failJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.stringMatching(/REDACTION/),
+      })
+    );
+    expect(failJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.stringMatching(/document-engine/),
+      })
+    );
   });
 });
 

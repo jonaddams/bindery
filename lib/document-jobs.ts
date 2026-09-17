@@ -21,8 +21,8 @@
  * in a SQL `WHERE` — there the effect was unwanted, here it is the entire point.
  */
 
+import type { DocumentJobKind, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import type { Redaction } from '@/lib/redaction';
 
 /**
  * How many times a job may be claimed before the sweeper stops picking it up.
@@ -62,23 +62,17 @@ const reclaimableStatuses = () => [
   { status: 'RUNNING' as const, startedAt: { lt: stalledBefore() } },
 ];
 
-export const createRedactionJob = async (options: {
+export const createDocumentJob = async (options: {
   documentId: string;
   requestedById: string;
-  redaction: Redaction;
+  kind: DocumentJobKind;
+  /** Stored as given, so a finished job can still answer what it was asked to do. */
+  parameters: Prisma.InputJsonValue;
 }) => {
-  const { documentId, requestedById, redaction } = options;
+  const { documentId, requestedById, kind, parameters } = options;
 
   return prisma.documentJob.create({
-    data: {
-      documentId,
-      requestedById,
-      kind: 'REDACTION',
-      // Stored as given so a finished job can still answer "what did this
-      // remove?". A status alone cannot, and for redaction that question is the
-      // one a reader most needs answered.
-      parameters: { ...redaction },
-    },
+    data: { documentId, requestedById, kind, parameters },
   });
 };
 

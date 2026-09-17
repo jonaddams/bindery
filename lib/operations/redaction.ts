@@ -29,6 +29,8 @@
  * than by omission, so the refusal is legible.
  */
 
+import { asRecord, type DocumentOperation } from '@/lib/operations/types';
+
 /**
  * The patterns the Processor API knows by name.
  *
@@ -95,11 +97,6 @@ export type RedactionInstructions = {
 
 const isPreset = (value: unknown): value is RedactionPreset =>
   typeof value === 'string' && REDACTION_PRESETS.includes(value as RedactionPreset);
-
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 
 const parsePreset = (request: Record<string, unknown>): RedactionRequestResult => {
   if (!isPreset(request.preset)) {
@@ -206,4 +203,26 @@ export const buildRedactionInstructions = (options: {
     ],
     output: { type: 'pdf' },
   };
+};
+
+export const redactionOperation: DocumentOperation = {
+  kind: 'REDACTION',
+  label: 'Redact',
+  description: 'Permanently remove matching text.',
+  backends: ['dws', 'document-engine'],
+  fields: [{ kind: 'preset-or-regex', name: 'redaction', label: 'What to redact' }],
+  parse: (raw) => {
+    const request = parseRedactionRequest(raw);
+
+    if (!request.ok) {
+      return { ok: false, message: request.message };
+    }
+
+    return {
+      ok: true,
+      outputSuffix: 'redacted',
+      buildInstructions: ({ filePartName }) =>
+        buildRedactionInstructions({ filePartName, redaction: request.redaction }),
+    };
+  },
 };

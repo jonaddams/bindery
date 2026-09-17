@@ -5,10 +5,11 @@ import {
   requireAuth,
   type SessionUser,
 } from '@/lib/auth';
-import { createRedactionJob } from '@/lib/document-jobs';
+import { createDocumentJob } from '@/lib/document-jobs';
 import { jobRunner } from '@/lib/job-runner';
+import { nutrientConfig } from '@/lib/nutrient-config';
+import { operationsFor } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
-import { parseRedactionRequest } from '@/lib/redaction';
 
 /**
  * Jobs against one document.
@@ -49,17 +50,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'A JSON body is required.' }, { status: 400 });
     }
 
-    if (body?.kind !== 'REDACTION') {
+    const operation = operationsFor(nutrientConfig().target).find(
+      (candidate) => candidate.kind === body?.kind
+    );
+
+    if (!operation) {
       return NextResponse.json(
         { error: `"${String(body?.kind)}" is not an operation this deployment performs.` },
         { status: 400 }
       );
     }
 
-    const redaction = parseRedactionRequest(body);
+    const parsed = operation.parse(body);
 
-    if (!redaction.ok) {
-      return NextResponse.json({ error: redaction.message }, { status: 400 });
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.message }, { status: 400 });
     }
 
     // Write access: see the note above. Absence is reported as 404 rather than
@@ -74,10 +79,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
-    const job = await createRedactionJob({
+    const job = await createDocumentJob({
       documentId: document.id,
       requestedById: session.user.id,
-      redaction: redaction.redaction,
+      kind: operation.kind,
+      parameters: body,
     });
 
     // A failure to enqueue is not a failure to accept. The job is recorded, and

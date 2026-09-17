@@ -119,6 +119,7 @@ export function MentionFeed() {
             <li key={mention.id} className="py-2 flex flex-wrap items-center gap-x-2 gap-y-1">
               {!mention.read && (
                 <span
+                  role="img"
                   aria-label="Unread"
                   className="h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0"
                 />

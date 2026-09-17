@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { DocumentTools } from '@/components/document-tools';
 import { DocumentViewer } from '@/components/document-viewer';
-import { RedactionPanel } from '@/components/redaction-panel';
 import { SignOutButton } from '@/components/sign-out-button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { getDocumentWriteFilter, getEffectiveDocumentFilter, requireAuth } from '@/lib/auth';
+import { nutrientConfig } from '@/lib/nutrient-config';
+import { operationsFor, toOperationSummary } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
 
 type Params = {
@@ -54,15 +56,23 @@ export default async function DocumentView({ params }: { params: Promise<Params>
       notFound();
     }
 
-    // Whether this reader may *start* a redaction, which is a narrower
+    // Whether this reader may *start* an operation, which is a narrower
     // permission than reading the document: it spends processing credits and
     // creates a document owned by the owner. The route enforces the same split
     // — this only decides whether to offer the control.
-    const canRedact =
+    const canRunTools =
       (await prisma.document.findFirst({
         where: { id, ...getDocumentWriteFilter(session.user) },
         select: { id: true },
       })) !== null;
+
+    // Called here, not in the client component: DocumentTools must never import
+    // nutrientConfig, so what this deployment offers is decided server-side and
+    // handed down as plain data. Projected through toOperationSummary because
+    // DocumentOperation.parse is a function — React cannot pass a function from
+    // a server component to a Client Component, and this is not caught by
+    // typecheck or build, only by actually loading the page.
+    const operations = operationsFor(nutrientConfig().target).map(toOperationSummary);
 
     const formatFileSize = (bytes: bigint | null) => {
       if (!bytes || bytes === BigInt(0)) return '0 Bytes';
@@ -177,7 +187,11 @@ export default async function DocumentView({ params }: { params: Promise<Params>
               </table>
             </div>
 
-            <RedactionPanel documentId={document.id} canRedact={canRedact} />
+            <DocumentTools
+              documentId={document.id}
+              canRunTools={canRunTools}
+              operations={operations}
+            />
 
             {/* Document viewer */}
             <DocumentViewer documentId={document.id} className="h-[calc(100vh-240px)]" />
