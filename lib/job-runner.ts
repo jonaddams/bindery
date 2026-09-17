@@ -27,10 +27,11 @@
  * not touch it.
  */
 
+import type { DocumentJobKind } from '@prisma/client';
 import { after } from 'next/server';
 import { claimJob, failJob, findReclaimableJobs, succeedJob } from '@/lib/document-jobs';
 import { documentProvider } from '@/lib/document-provider';
-import { buildRedactionInstructions, parseRedactionRequest } from '@/lib/operations/redaction';
+import { operationFor } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -46,24 +47,22 @@ export type JobRunner = {
 /** The multipart field name, and so also the name the instructions reference. */
 const FILE_PART_NAME = 'document';
 
-const REDACTED_SUFFIX = 'redacted';
-
 /**
  * Name the output so it cannot be mistaken for its source in a list.
  *
- * Worth doing properly: the whole hazard of redaction as a feature is someone
- * sending the wrong one of two near-identical documents.
+ * Worth doing properly: the whole hazard of an operation like redaction is
+ * someone sending the wrong one of two near-identical documents.
  */
-const redactedTitle = (title: string): string => `${title} (${REDACTED_SUFFIX})`;
+const suffixedTitle = (title: string, suffix: string): string => `${title} (${suffix})`;
 
-const redactedFilename = (filename: string): string => {
+const suffixedFilename = (filename: string, suffix: string): string => {
   const extension = filename.lastIndexOf('.');
 
   if (extension <= 0) {
-    return `${filename}-${REDACTED_SUFFIX}`;
+    return `${filename}-${suffix}`;
   }
 
-  return `${filename.slice(0, extension)}-${REDACTED_SUFFIX}${filename.slice(extension)}`;
+  return `${filename.slice(0, extension)}-${suffix}${filename.slice(extension)}`;
 };
 
 const describe = (error: unknown): string =>
@@ -102,17 +101,29 @@ export const runJob = async (options: {
 type ClaimedJob = {
   id: string;
   documentId: string;
+  kind: DocumentJobKind;
   parameters: unknown;
 };
 
 const performJob = async (job: ClaimedJob): Promise<void> => {
-  const redaction = parseRedactionRequest(job.parameters);
+  const operation = operationFor(job.kind);
 
-  if (!redaction.ok) {
+  if (!operation) {
+    // Parameters and kind are read back from the database, so nothing
+    // guarantees the running code still implements what an older writer
+    // recorded — this is a real runtime case, not defensive padding.
+    throw new Error(
+      `This job cannot be run: "${job.kind}" is not an operation this build implements.`
+    );
+  }
+
+  const request = operation.parse(job.parameters);
+
+  if (!request.ok) {
     // Parameters are read back from JSON, so nothing guarantees they still
     // describe an operation this code can perform — the column is Json, and the
     // code that wrote it may be older than the code reading it.
-    throw new Error(`This job cannot be run: ${redaction.message}`);
+    throw new Error(`This job cannot be run: ${request.message}`);
   }
 
   const document = await prisma.document.findUnique({ where: { id: job.documentId } });
@@ -128,13 +139,10 @@ const performJob = async (job: ClaimedJob): Promise<void> => {
   const processed = await provider.processDocument({
     source: new Uint8Array(source),
     filename: document.filename,
-    instructions: buildRedactionInstructions({
-      filePartName: FILE_PART_NAME,
-      redaction: redaction.redaction,
-    }),
+    instructions: request.buildInstructions({ filePartName: FILE_PART_NAME }),
   });
 
-  const filename = redactedFilename(document.filename);
+  const filename = suffixedFilename(document.filename, request.outputSuffix);
 
   const uploaded = await provider.uploadDocument({
     file: new File([processed], filename, { type: 'application/pdf' }),
@@ -144,7 +152,7 @@ const performJob = async (job: ClaimedJob): Promise<void> => {
     data: {
       documentEngineId: uploaded.documentId,
       sessionToken: uploaded.sessionToken,
-      title: redactedTitle(document.title),
+      title: suffixedTitle(document.title, request.outputSuffix),
       filename,
       // Always a PDF regardless of what went in: the Build output is `pdf`, so
       // carrying the source's type across would mislabel a redacted .docx.

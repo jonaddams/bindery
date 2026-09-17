@@ -201,6 +201,25 @@ describe('when a job cannot be run', () => {
   });
 });
 
+describe('when a job kind has no operation', () => {
+  it('refuses a job whose kind no operation implements, naming the kind', async () => {
+    // Parameters and kind are read back from the database, so nothing guarantees
+    // the running code still implements what an older writer recorded.
+    claimJob.mockResolvedValue({
+      id: 'job_1',
+      documentId: 'doc_1',
+      kind: 'WATERMARK',
+      parameters: {},
+    });
+
+    await runJob({ jobId: 'job_1' });
+
+    expect(failJob).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('WATERMARK') })
+    );
+  });
+});
+
 describe('sweeping for work', () => {
   it('runs everything it finds', async () => {
     findReclaimableJobs.mockResolvedValue([{ id: 'job_1' }, { id: 'job_2' }]);
