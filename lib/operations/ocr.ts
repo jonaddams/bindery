@@ -17,7 +17,7 @@
  * full-word languages — confirmed accepted — are listed.
  */
 
-import type { DocumentOperation } from '@/lib/operations/types';
+import { asRecord, type DocumentOperation } from '@/lib/operations/types';
 
 export const OCR_LANGUAGES = [
   'english',
@@ -56,12 +56,6 @@ export const OCR_LANGUAGE_LABELS: Record<OcrLanguage, string> = {
 
 const isLanguage = (value: unknown): value is OcrLanguage =>
   typeof value === 'string' && OCR_LANGUAGES.includes(value as OcrLanguage);
-
-/** Mirrors redaction's `asRecord`: narrows without asserting a caller-supplied shape. */
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 
 /** A Build instruction document, narrowed to what an OCR job sends. */
 export type OcrInstructions = {

@@ -3,6 +3,7 @@ import type { NutrientTarget } from '@/lib/nutrient-config';
 import { ocrOperation } from '@/lib/operations/ocr';
 import { redactionOperation } from '@/lib/operations/redaction';
 import type { DocumentOperation } from '@/lib/operations/types';
+import { watermarkOperation } from '@/lib/operations/watermark';
 
 export type {
   DocumentOperation,
@@ -11,7 +12,11 @@ export type {
 } from '@/lib/operations/types';
 
 /** Every operation this app implements. Order is the order the menu shows. */
-export const DOCUMENT_OPERATIONS: readonly DocumentOperation[] = [redactionOperation, ocrOperation];
+export const DOCUMENT_OPERATIONS: readonly DocumentOperation[] = [
+  redactionOperation,
+  ocrOperation,
+  watermarkOperation,
+];
 
 export const operationFor = (kind: DocumentJobKind): DocumentOperation | undefined =>
   DOCUMENT_OPERATIONS.find((operation) => operation.kind === kind);

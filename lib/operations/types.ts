@@ -53,3 +53,16 @@ export type DocumentOperation = {
   fields: readonly OperationField[];
   parse(raw: unknown): OperationParseResult;
 };
+
+/**
+ * Narrow an unknown request body to a plain object without asserting it.
+ *
+ * Every operation's `parse` receives `unknown` and needs to read named
+ * properties off it before validating them; this is the one place that does
+ * the narrowing, so `redaction.ts`, `ocr.ts` and `watermark.ts` share a single
+ * definition rather than each carrying its own identical copy.
+ */
+export const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;

@@ -208,14 +208,14 @@ describe('when a job kind has no operation', () => {
     claimJob.mockResolvedValue({
       id: 'job_1',
       documentId: 'doc_1',
-      kind: 'WATERMARK',
+      kind: 'PDFA',
       parameters: {},
     });
 
     await runJob({ jobId: 'job_1' });
 
     expect(failJob).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining('WATERMARK') })
+      expect.objectContaining({ error: expect.stringContaining('PDFA') })
     );
   });
 });

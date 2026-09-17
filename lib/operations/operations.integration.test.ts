@@ -6,9 +6,10 @@
  */
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { documentProvider } from '@/lib/document-provider';
 import { ocrOperation } from '@/lib/operations/ocr';
+import { watermarkOperation } from '@/lib/operations/watermark';
 
 const baseUrl = process.env.DOCUMENT_ENGINE_TEST_URL ?? 'http://localhost:5001';
 const token = process.env.DOCUMENT_ENGINE_TEST_TOKEN ?? 'secret';
@@ -33,6 +34,26 @@ const engineIsRunning = await (async (): Promise<boolean> => {
     return false;
   }
 })();
+
+/** A plain text PDF, for operations that just need something to stamp or extract from. */
+const samplePdf = async (): Promise<Uint8Array<ArrayBuffer>> => {
+  const body = new FormData();
+  body.set('instructions', JSON.stringify({ parts: [{ html: 'index.html' }] }));
+  body.set(
+    'index.html',
+    new File(['<html><body><p>Ordinary report body text.</p></body></html>'], 'index.html', {
+      type: 'text/html',
+    })
+  );
+
+  const response = await fetch(`${baseUrl}/api/build`, {
+    method: 'POST',
+    headers: { Authorization: `Token token=${token}` },
+    body,
+  });
+
+  return new Uint8Array(await response.arrayBuffer());
+};
 
 /** A page of rasterised text: OCR has nothing to do on a PDF that already has a text layer. */
 const scannedPdf = async (): Promise<Uint8Array<ArrayBuffer>> => {
@@ -149,17 +170,9 @@ const extractText = async (pdf: Uint8Array<ArrayBuffer>): Promise<string> => {
   return response.text();
 };
 
-const uploaded: string[] = [];
-
-afterAll(async () => {
-  if (!engineIsRunning) return;
-  for (const documentId of uploaded) {
-    await fetch(`${baseUrl}/api/documents/${documentId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Token token=${token}` },
-    }).catch(() => undefined);
-  }
-});
+// No `afterAll` cleanup here: every test in this file calls `processDocument`
+// directly against in-memory bytes, never `uploadDocument`, so nothing is ever
+// stored on the engine for a test in this file to delete afterwards.
 
 describe.skipIf(!engineIsRunning)('Operations against a real engine', () => {
   beforeEach(() => {
@@ -199,4 +212,28 @@ describe.skipIf(!engineIsRunning)('Operations against a real engine', () => {
     // accepted, not a defect — it just should not be described as covered.
     expect(await extractText(processedBytes)).toContain('SCANNED PROBE TEXT');
   }, 180_000);
+
+  it('watermark puts the requested text into the document', async () => {
+    // A distinctive string, because an unlicensed engine stamps its own
+    // "For Evaluation Purposes Only" watermark and "some watermark is present"
+    // would pass without this operation doing anything.
+    const request = watermarkOperation.parse({ kind: 'WATERMARK', text: 'ZZTOPSECRETZZ' });
+    if (!request.ok) throw new Error(request.message);
+
+    const source = await samplePdf();
+
+    const processed = await documentProvider().processDocument({
+      source,
+      filename: 'report.pdf',
+      instructions: request.buildInstructions({ filePartName: 'document' }),
+    });
+
+    // Extraction here is genuine evidence the watermark is visually present in
+    // the output — not proof of reading a pre-existing text layer. This engine
+    // silently runs its own OCR when a page lacks a text layer (see the comment
+    // on `hasSelectableTextLayer` above), but `samplePdf()` is HTML-rendered and
+    // already has a real text layer, so this extraction is reading text, not
+    // triggering that fallback.
+    expect(await extractText(new Uint8Array(processed))).toContain('ZZTOPSECRETZZ');
+  }, 120_000);
 });
