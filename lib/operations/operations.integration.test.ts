@@ -9,6 +9,7 @@ import { inflateSync } from 'node:zlib';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { documentProvider } from '@/lib/document-provider';
 import { ocrOperation } from '@/lib/operations/ocr';
+import { PDFA_CONFORMANCE_LEVELS, pdfaOperation } from '@/lib/operations/pdfa';
 import { watermarkOperation } from '@/lib/operations/watermark';
 
 const baseUrl = process.env.DOCUMENT_ENGINE_TEST_URL ?? 'http://localhost:5001';
@@ -235,5 +236,29 @@ describe.skipIf(!engineIsRunning)('Operations against a real engine', () => {
     // already has a real text layer, so this extraction is reading text, not
     // triggering that fallback.
     expect(await extractText(new Uint8Array(processed))).toContain('ZZTOPSECRETZZ');
+  }, 120_000);
+
+  it('PDF/A conversion runs and returns a different document', async () => {
+    // Deliberately weaker than the other two: asserting real PDF/A conformance
+    // needs a validator this project does not have, and a test implying
+    // compliance it never checked would be worse than one claiming less. This
+    // only proves the operation ran and produced a different document — not
+    // that the output is genuinely PDF/A-conformant.
+    const request = pdfaOperation.parse({
+      kind: 'PDFA',
+      conformance: PDFA_CONFORMANCE_LEVELS[0],
+    });
+    if (!request.ok) throw new Error(request.message);
+
+    const source = await samplePdf();
+
+    const processed = await documentProvider().processDocument({
+      source,
+      filename: 'report.pdf',
+      instructions: request.buildInstructions({ filePartName: 'document' }),
+    });
+
+    expect(processed.byteLength).toBeGreaterThan(0);
+    expect(new Uint8Array(processed)).not.toEqual(source);
   }, 120_000);
 });

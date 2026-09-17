@@ -18,6 +18,18 @@ vi.mock('@/lib/document-jobs', async () => {
   };
 });
 
+const operationFor = vi.fn();
+
+vi.mock('@/lib/operations', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/operations')>('@/lib/operations');
+  return { ...actual, operationFor: (...a: unknown[]) => operationFor(...a) };
+});
+
+// The real lookup, used as the default so every test other than the one below
+// exercises registry behaviour unchanged.
+const { operationFor: realOperationFor } =
+  await vi.importActual<typeof import('@/lib/operations')>('@/lib/operations');
+
 const findUniqueDocument = vi.fn();
 const createDocument = vi.fn();
 
@@ -76,6 +88,7 @@ beforeEach(() => {
   succeedJob.mockResolvedValue({});
   failJob.mockResolvedValue({});
   findReclaimableJobs.mockResolvedValue([]);
+  operationFor.mockImplementation(realOperationFor);
   findUniqueDocument.mockResolvedValue(aDocument());
   createDocument.mockResolvedValue({ id: 'doc_2' });
   downloadDocument.mockResolvedValue(sourceBytes);
@@ -203,19 +216,19 @@ describe('when a job cannot be run', () => {
 
 describe('when a job kind has no operation', () => {
   it('refuses a job whose kind no operation implements, naming the kind', async () => {
-    // Parameters and kind are read back from the database, so nothing guarantees
-    // the running code still implements what an older writer recorded.
-    claimJob.mockResolvedValue({
-      id: 'job_1',
-      documentId: 'doc_1',
-      kind: 'PDFA',
-      parameters: {},
-    });
+    // The registry is complete today (every DocumentJobKind has an operation),
+    // so there is no real unregistered kind left to use as a fixture. The
+    // lookup miss is mocked instead of fabricated with `as DocumentJobKind` —
+    // that would assert a bad value is a valid kind, which is exactly the
+    // unjustified assertion this codebase forbids. What's under test is the
+    // `if (!operation)` branch in job-runner.ts, not which kind caused it.
+    operationFor.mockReturnValueOnce(undefined);
+    claimJob.mockResolvedValue(aJob({ kind: 'REDACTION' }));
 
     await runJob({ jobId: 'job_1' });
 
     expect(failJob).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining('PDFA') })
+      expect.objectContaining({ error: expect.stringContaining('REDACTION') })
     );
   });
 });
