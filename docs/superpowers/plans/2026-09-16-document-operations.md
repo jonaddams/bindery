@@ -666,8 +666,29 @@ import type { DocumentOperation } from '@/lib/operations/types';
  * from documentation — see docs/superpowers/specs/2026-09-16-build-api-shapes.md.
  * Listed here so an unknown one is refused with a useful message instead of
  * becoming an opaque 400 after the job is queued.
+ *
+ * **Latin-script languages only, deliberately.** The probe found that the
+ * full-English-word form exists only for these; every non-Latin language it
+ * accepted (`jpn`, `ara`, `rus`, `chi_sim`…) works *only* as a 3-letter code,
+ * and that alias table looks like a property of the engine image's bundled
+ * Tesseract packs rather than an API contract. Those codes are verified against
+ * a local Document Engine and **not** against the hosted DWS API, so offering
+ * them would risk a menu entry that fails mid-job on the other backend. Add them
+ * when they have been verified on both.
  */
-export const OCR_LANGUAGES = ['english'] as const;
+export const OCR_LANGUAGES = [
+  'english',
+  'german',
+  'french',
+  'spanish',
+  'italian',
+  'portuguese',
+  'dutch',
+  'swedish',
+  'polish',
+  'czech',
+  'turkish',
+] as const;
 
 export type OcrLanguage = (typeof OCR_LANGUAGES)[number];
 
@@ -678,6 +699,16 @@ export type OcrLanguage = (typeof OCR_LANGUAGES)[number];
  */
 export const OCR_LANGUAGE_LABELS: Record<OcrLanguage, string> = {
   english: 'English',
+  german: 'German',
+  french: 'French',
+  spanish: 'Spanish',
+  italian: 'Italian',
+  portuguese: 'Portuguese',
+  dutch: 'Dutch',
+  swedish: 'Swedish',
+  polish: 'Polish',
+  czech: 'Czech',
+  turkish: 'Turkish',
 };
 
 const isLanguage = (value: unknown): value is OcrLanguage =>
@@ -916,6 +947,19 @@ describe('Watermark', () => {
     );
   });
 
+  it('sends the width and height the API requires for a text watermark', () => {
+    // Verified in Task 1: `text` alone is rejected with `width` and `height`
+    // both "can't be blank". Both are mandatory for a text watermark — an image
+    // watermark needs only one, which is a different code path we do not offer.
+    const result = watermarkOperation.parse({ kind: 'WATERMARK', text: 'CONFIDENTIAL' });
+
+    if (!result.ok) throw new Error(result.message);
+
+    expect(result.buildInstructions({ filePartName: 'document' }).actions).toContainEqual(
+      expect.objectContaining({ width: '50%', height: '50%' })
+    );
+  });
+
   it('refuses empty text rather than stamping nothing', () => {
     const result = watermarkOperation.parse({ kind: 'WATERMARK', text: '   ' });
 
@@ -952,6 +996,15 @@ import type { DocumentOperation } from '@/lib/operations/types';
  */
 export const WATERMARK_MAX_LENGTH = 64;
 
+/**
+ * The API requires both dimensions for a *text* watermark and rejects the action
+ * without them — verified in Task 1, where `text` alone came back with `width`
+ * and `height` each "can't be blank". They are fixed rather than exposed: a
+ * watermark that covers half the page is what the operation means, and two more
+ * fields would be two more things to validate for no gain a reader asked for.
+ */
+const WATERMARK_SIZE = { width: '50%', height: '50%' } as const;
+
 export const watermarkOperation: DocumentOperation = {
   kind: 'WATERMARK',
   label: 'Watermark',
@@ -986,7 +1039,7 @@ export const watermarkOperation: DocumentOperation = {
       outputSuffix: 'watermarked',
       buildInstructions: ({ filePartName }) => ({
         parts: [{ file: filePartName }],
-        actions: [{ type: 'watermark', text }],
+        actions: [{ type: 'watermark', text, ...WATERMARK_SIZE }],
         output: { type: 'pdf' },
       }),
     };
@@ -1092,14 +1145,41 @@ Expected: FAIL — module not found.
 // lib/operations/pdfa.ts
 import type { DocumentOperation } from '@/lib/operations/types';
 
-/** Confirmed by probing — see docs/superpowers/specs/2026-09-16-build-api-shapes.md. */
-export const PDFA_CONFORMANCE_LEVELS = ['pdfa-2b'] as const;
+/**
+ * Confirmed by probing — see docs/superpowers/specs/2026-09-16-build-api-shapes.md,
+ * where all eleven were individually accepted by the live engine. Use the
+ * lowercase hyphenated form: uppercase appeared to be accepted too, but only one
+ * variant was tried and that is not a rule to rely on.
+ */
+export const PDFA_CONFORMANCE_LEVELS = [
+  'pdfa-1a',
+  'pdfa-1b',
+  'pdfa-2a',
+  'pdfa-2u',
+  'pdfa-2b',
+  'pdfa-3a',
+  'pdfa-3u',
+  'pdfa-3b',
+  'pdfa-4',
+  'pdfa-4e',
+  'pdfa-4f',
+] as const;
 
 export type PdfaConformance = (typeof PDFA_CONFORMANCE_LEVELS)[number];
 
 /** Presentable names for the API's own identifiers, as OCR and redaction do. */
 export const PDFA_CONFORMANCE_LABELS: Record<PdfaConformance, string> = {
+  'pdfa-1a': 'PDF/A-1a',
+  'pdfa-1b': 'PDF/A-1b',
+  'pdfa-2a': 'PDF/A-2a',
+  'pdfa-2u': 'PDF/A-2u',
   'pdfa-2b': 'PDF/A-2b',
+  'pdfa-3a': 'PDF/A-3a',
+  'pdfa-3u': 'PDF/A-3u',
+  'pdfa-3b': 'PDF/A-3b',
+  'pdfa-4': 'PDF/A-4',
+  'pdfa-4e': 'PDF/A-4e',
+  'pdfa-4f': 'PDF/A-4f',
 };
 
 const isConformance = (value: unknown): value is PdfaConformance =>
@@ -1306,7 +1386,12 @@ Expected: all pass.
 
 - [ ] **Step 8: Verify in a browser against both backends**
 
-Per `docs/testing-against-document-engine.md`: with `NUTRIENT_TARGET=document-engine`, open a document, run each of the four operations, and confirm each produces a derived document with lineage. Then set `NUTRIENT_TARGET=dws` and spot-check **one** operation — every DWS `/build` call is billed, so do not run the full matrix there.
+Per `docs/testing-against-document-engine.md`: with `NUTRIENT_TARGET=document-engine`, open a document, run each of the four operations, and confirm each produces a derived document with lineage. Then set `NUTRIENT_TARGET=dws` and spot-check **two** things — every DWS `/build` call is billed, so do not run the full matrix there:
+
+1. any one operation, to confirm the path works at all;
+2. **OCR in a language other than English** (German is fine).
+
+The second is not arbitrary. The OCR language list was verified against a local Document Engine only, and the probe found its language aliases look like a property of that image's bundled Tesseract packs rather than an API contract. If the hosted API rejects a language this menu offers, the failure lands mid-job with the vendor's message rather than ours. If it does reject one, narrow `OCR_LANGUAGES` to what both backends accept and say so in the module.
 
 - [ ] **Step 9: Commit**
 
