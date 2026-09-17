@@ -3,7 +3,7 @@
 import type { DocumentJobKind } from '@prisma/client';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DocumentOperation, OperationField } from '@/lib/operations';
+import type { OperationField, OperationSummary } from '@/lib/operations';
 import {
   REDACTION_PRESET_LABELS,
   REDACTION_PRESETS,
@@ -34,7 +34,7 @@ type DocumentToolsProps = {
    */
   canRunTools: boolean;
   /** What this deployment offers, decided server-side by `operationsFor`. */
-  operations: readonly DocumentOperation[];
+  operations: readonly OperationSummary[];
 };
 
 /** How often to ask whether a running job has finished. */
@@ -151,7 +151,7 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
     setMenuOpen(true);
   };
 
-  const chooseOperation = (operation: DocumentOperation) => {
+  const chooseOperation = (operation: OperationSummary) => {
     setSelectedKind(operation.kind);
     setFieldValues(defaultFieldValues(operation.fields));
     setPreset(REDACTION_PRESETS[0]);
@@ -173,7 +173,7 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
    * `{ strategy, regex, caseSensitive }` — so it is assembled separately rather
    * than forced into the same shape.
    */
-  const buildRequestBody = (operation: DocumentOperation): Record<string, unknown> => {
+  const buildRequestBody = (operation: OperationSummary): Record<string, unknown> => {
     const body: Record<string, unknown> = { kind: operation.kind };
 
     for (const field of operation.fields) {

@@ -55,6 +55,24 @@ export type DocumentOperation = {
 };
 
 /**
+ * What survives the server/client boundary.
+ *
+ * `DocumentOperation.parse` is a function, and a server component cannot pass a
+ * function to a Client Component — React throws at request time, not at build
+ * or type-check time, so this is not caught by `next build` or `tsc`. Only the
+ * API route and the job runner ever call `parse`, both of which run
+ * server-side, so it deliberately does not appear here. Every field on
+ * `OperationSummary` must itself stay plain data all the way down (see
+ * `OperationField`) for the same reason.
+ *
+ * `DocumentOperation` remains structurally assignable to `OperationSummary` —
+ * a wider object satisfies a `Pick` of itself — so nothing here stops a future
+ * change from passing the full operation again and still type-checking.
+ * `lib/operations/index.test.ts` guards that at runtime instead.
+ */
+export type OperationSummary = Pick<DocumentOperation, 'kind' | 'label' | 'description' | 'fields'>;
+
+/**
  * Narrow an unknown request body to a plain object without asserting it.
  *
  * Every operation's `parse` receives `unknown` and needs to read named

@@ -6,7 +6,7 @@ import { SignOutButton } from '@/components/sign-out-button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { getDocumentWriteFilter, getEffectiveDocumentFilter, requireAuth } from '@/lib/auth';
 import { nutrientConfig } from '@/lib/nutrient-config';
-import { operationsFor } from '@/lib/operations';
+import { operationsFor, toOperationSummary } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
 
 type Params = {
@@ -68,8 +68,11 @@ export default async function DocumentView({ params }: { params: Promise<Params>
 
     // Called here, not in the client component: DocumentTools must never import
     // nutrientConfig, so what this deployment offers is decided server-side and
-    // handed down as plain data.
-    const operations = operationsFor(nutrientConfig().target);
+    // handed down as plain data. Projected through toOperationSummary because
+    // DocumentOperation.parse is a function — React cannot pass a function from
+    // a server component to a Client Component, and this is not caught by
+    // typecheck or build, only by actually loading the page.
+    const operations = operationsFor(nutrientConfig().target).map(toOperationSummary);
 
     const formatFileSize = (bytes: bigint | null) => {
       if (!bytes || bytes === BigInt(0)) return '0 Bytes';

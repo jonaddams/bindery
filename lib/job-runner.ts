@@ -31,7 +31,8 @@ import type { DocumentJobKind } from '@prisma/client';
 import { after } from 'next/server';
 import { claimJob, failJob, findReclaimableJobs, succeedJob } from '@/lib/document-jobs';
 import { documentProvider } from '@/lib/document-provider';
-import { operationFor } from '@/lib/operations';
+import { nutrientConfig } from '@/lib/nutrient-config';
+import { operationsFor } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -106,14 +107,22 @@ type ClaimedJob = {
 };
 
 const performJob = async (job: ClaimedJob): Promise<void> => {
-  const operation = operationFor(job.kind);
+  // Gated on the *configured* backend, not merely on whether the kind exists in
+  // the registry: the route and the page both offer only what
+  // `operationsFor(target)` returns, and a job queued while pointed at one
+  // backend must not silently run against another that may not implement it at
+  // all. This is inert while every operation lists both backends and stops
+  // being inert the moment one does not.
+  const target = nutrientConfig().target;
+  const operation = operationsFor(target).find((candidate) => candidate.kind === job.kind);
 
   if (!operation) {
     // Parameters and kind are read back from the database, so nothing
     // guarantees the running code still implements what an older writer
-    // recorded — this is a real runtime case, not defensive padding.
+    // recorded, or that the deployment is still pointed at the backend that
+    // queued it — this is a real runtime case, not defensive padding.
     throw new Error(
-      `This job cannot be run: "${job.kind}" is not an operation this build implements.`
+      `This job cannot be run: "${job.kind}" is not an operation the "${target}" backend performs.`
     );
   }
 
