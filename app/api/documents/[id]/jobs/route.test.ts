@@ -9,6 +9,7 @@ const findFirstDocument = vi.fn();
 const findManyJobs = vi.fn();
 const createDocumentJob = vi.fn();
 const enqueue = vi.fn();
+const resolvedConfig = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   requireAuth: (...a: unknown[]) => requireAuth(...a),
@@ -26,6 +27,9 @@ vi.mock('@/lib/prisma', () => ({
     document: { findFirst: (...a: unknown[]) => findFirstDocument(...a) },
     documentJob: { findMany: (...a: unknown[]) => findManyJobs(...a) },
   },
+}));
+vi.mock('@/lib/nutrient-config', () => ({
+  nutrientConfig: () => resolvedConfig(),
 }));
 
 const { GET, POST } = await import('@/app/api/documents/[id]/jobs/route');
@@ -61,6 +65,11 @@ beforeEach(() => {
     status: 'PENDING',
     kind: 'REDACTION',
     createdAt: new Date('2026-09-14T12:00:00Z'),
+  });
+  resolvedConfig.mockReset().mockReturnValue({
+    target: 'dws',
+    baseUrl: 'https://api.nutrient.io',
+    limits: { requestTimeoutMs: 120_000 },
   });
 });
 
@@ -128,6 +137,26 @@ describe('Queueing a redaction', () => {
 
     expect(response.status).toBe(400);
     expect(createDocumentJob).not.toHaveBeenCalled();
+  });
+
+  it('refuses a kind no operation implements', async () => {
+    const response = await post({ kind: 'TELEPORTATION' });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('accepts a kind the registry implements for this backend', async () => {
+    // 202, not 201 as the brief's own draft had it: the route's documented and
+    // tested contract is "taken on, not done" (see the first test in this
+    // describe block), and a redaction job is recorded, not completed
+    // synchronously.
+    const response = await post({
+      kind: 'REDACTION',
+      strategy: 'preset',
+      preset: 'email-address',
+    });
+
+    expect(response.status).toBe(202);
   });
 
   it('refuses a body that is not JSON at all', async () => {
