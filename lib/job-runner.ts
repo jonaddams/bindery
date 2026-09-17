@@ -30,8 +30,8 @@
 import { after } from 'next/server';
 import { claimJob, failJob, findReclaimableJobs, succeedJob } from '@/lib/document-jobs';
 import { documentProvider } from '@/lib/document-provider';
+import { buildRedactionInstructions, parseRedactionRequest } from '@/lib/operations/redaction';
 import { prisma } from '@/lib/prisma';
-import { buildRedactionInstructions, parseRedactionRequest } from '@/lib/redaction';
 
 /**
  * How a job gets from "recorded" to "running".

@@ -2,7 +2,11 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { REDACTION_PRESET_LABELS, REDACTION_PRESETS, type RedactionPreset } from '@/lib/redaction';
+import {
+  REDACTION_PRESET_LABELS,
+  REDACTION_PRESETS,
+  type RedactionPreset,
+} from '@/lib/operations/redaction';
 
 type JobStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
 

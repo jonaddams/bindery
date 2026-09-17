@@ -21,8 +21,8 @@
  * in a SQL `WHERE` — there the effect was unwanted, here it is the entire point.
  */
 
+import type { Redaction } from '@/lib/operations/redaction';
 import { prisma } from '@/lib/prisma';
-import type { Redaction } from '@/lib/redaction';
 
 /**
  * How many times a job may be claimed before the sweeper stops picking it up.

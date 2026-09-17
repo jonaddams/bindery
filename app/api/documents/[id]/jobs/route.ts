@@ -7,8 +7,8 @@ import {
 } from '@/lib/auth';
 import { createRedactionJob } from '@/lib/document-jobs';
 import { jobRunner } from '@/lib/job-runner';
+import { parseRedactionRequest } from '@/lib/operations/redaction';
 import { prisma } from '@/lib/prisma';
-import { parseRedactionRequest } from '@/lib/redaction';
 
 /**
  * Jobs against one document.
