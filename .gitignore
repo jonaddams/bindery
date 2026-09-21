@@ -46,4 +46,16 @@ TODO.md
 project-plan.md
 CLAUDE.md
 
+# Session handoff notes, written by the remember plugin.
+#
+# Deliberately not tracked. The plugin writes this file but never commits it, so
+# a tracked copy drifts from the working tree — at one point the committed note
+# was two sessions older than the uncommitted one sitting on top of it. Tracking
+# it also meant a routine handoff needed a branch and a pull request, because
+# background sessions cannot write to the shared checkout.
+#
+# It is machine-local scratch state. A fresh clone should have no handoff, not
+# somebody else's.
+.remember/
+
 
