@@ -58,4 +58,17 @@ CLAUDE.md
 # somebody else's.
 .remember/
 
-
+# Claude Code's machine-local state.
+#
+# Scoped to these two paths rather than the whole of `.claude/`, so that shared
+# project configuration — `settings.json`, skills, agents — can still be tracked
+# if it is ever wanted. Only what is genuinely per-machine is ignored.
+#
+# `worktrees/` matters more than it looks. Worktrees live *inside* the checkout,
+# so Node and TypeScript resolution walk up into the parent's `node_modules`
+# (see CLAUDE.md on how that defeats `tsc` for a removed dependency) — and four
+# abandoned ones had accumulated 2.2 GB here, unnoticed, because nothing lists
+# them. Untracked is not the same as ignored: `git add -A` would have staged
+# them.
+.claude/settings.local.json
+.claude/worktrees/
