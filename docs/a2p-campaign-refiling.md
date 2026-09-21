@@ -275,9 +275,32 @@ The three, for the record:
 
 | Field | Filed | Must become |
 | --- | --- | --- |
-| `opt_in_keywords` | `VERIFY, VERIFICATION` | `START, YES, UNSTOP` |
+| `opt_in_keywords` | `VERIFY, VERIFICATION` | **nothing — see below** |
 | `opt_in_message` | `You are now opted-in. For help, reply HELP. To opt-out, reply STOP` | `OPTED_BACK_IN_MESSAGE` |
 | `help_message` | `Reply STOP to unsubscribe. Msg&Data Rates May Apply.` | `HELP_MESSAGE` |
+
+**The `opt_in_keywords` row used to read `START, YES, UNSTOP`, and that was
+wrong.** Corrected 2026-09-21 after an outside reader pointed it out.
+
+`START`, `YES` and `UNSTOP` are opt-out **reversal** keywords. They mean
+something only to a number that previously sent `STOP`, which is why Twilio's
+own reply to them says "successfully re-subscribed". A reviewer texting `START`
+from a handset that has never opted out is not enrolled in the program — they
+get the re-subscribe path. So filing them would have replaced one claim a
+reviewer can falsify in thirty seconds with another, on the same CTA /
+`MESSAGE_FLOW` check that had already rejected this campaign twice.
+
+The deeper problem is that **no static string can describe this program's
+opt-in**, because the opt-in credential is a four-character single-use code,
+valid for ten minutes. `opt_in_keywords` is the wrong field to carry the
+mechanism. `message_flow` is the right one, and it is already correct — it
+describes the mobile-originated flow in full.
+
+So on a re-registration, leave `opt_in_keywords` empty if the form permits it,
+and otherwise file only what the program will genuinely honour on a first
+contact from a fresh handset. Do not paste the carrier-mandate list in because
+it looks like the expected answer; that is precisely how `VERIFY, VERIFICATION`
+got there.
 
 `lib/a2p-filing.test.ts` already pins the correct values as
 `FILED_OPT_IN_KEYWORDS`, `FILED_OPT_IN_MESSAGE` and `FILED_HELP_MESSAGE`, so

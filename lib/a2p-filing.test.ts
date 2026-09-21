@@ -66,10 +66,18 @@ const FILED_HELP_MESSAGE =
 const FILED_OPT_IN_KEYWORDS = ['VERIFY', 'VERIFICATION'] as const;
 
 /**
- * The opt-in keywords US carriers require regardless of what is filed. Honoured
- * whether or not the campaign names them, and it does not.
+ * The keywords US carriers require be honoured regardless of what is filed.
+ * Honoured whether or not the campaign names them, and it does not.
+ *
+ * Strictly these are opt-out **reversal** keywords, not opt-in keywords: they
+ * mean something only to a number that previously sent STOP, which is why
+ * Twilio's own reply to them says "successfully re-subscribed". Calling them
+ * opt-in keywords is the conflation that once put `START, YES, UNSTOP` in
+ * `docs/a2p-campaign-refiling.md` as the value `opt_in_keywords` should be
+ * refiled with — which would have filed a claim a reviewer could falsify from
+ * a fresh handset in thirty seconds.
  */
-const MANDATED_OPT_IN_KEYWORDS = ['START', 'YES', 'UNSTOP'] as const;
+const MANDATED_REVERSAL_KEYWORDS = ['START', 'YES', 'UNSTOP'] as const;
 const FILED_OPT_OUT_KEYWORDS = [
   'OPTOUT',
   'CANCEL',
@@ -121,8 +129,8 @@ describe('the keyword answers filed with the campaign', () => {
     }
   });
 
-  it('honours the opt-in keywords carriers mandate, filed or not', () => {
-    for (const keyword of MANDATED_OPT_IN_KEYWORDS) {
+  it('honours the reversal keywords carriers mandate, filed or not', () => {
+    for (const keyword of MANDATED_REVERSAL_KEYWORDS) {
       expect(classifyKeyword(keyword)).toBe('start');
     }
   });
