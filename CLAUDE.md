@@ -1446,6 +1446,21 @@ skips when no engine is reachable**, so it passes silently in a checkout that ha
 none. A green suite is not evidence. Confirm it reports `5 passed` and not
 `5 skipped`.
 
+**A healthy engine is not enough to un-skip it, and that is the sharper trap.**
+The guard also reads `docker/document-engine/secrets/jwt-private.pem`, because a
+viewer session is signed locally. That directory is gitignored, so it is
+machine-local and can simply go missing — and when it does, the suite reports a
+clean 657/8-skipped while `docker ps` shows both containers up and healthy and
+`/healthcheck` answers 200. Every signal says fine; the Document Engine half of
+the seam is untested. Found in exactly that state on 2026-09-21.
+
+**Recreate, do not restart.** Regenerating the keypair leaves the *running*
+engine holding the old `JWT_PUBLIC_KEY` in its environment, so newly signed JWTs
+would be rejected. A container's environment is fixed when it is created, so
+`docker restart` cannot pick the new key up — reach for `./up.sh`, which
+regenerates the keypair and recreates the containers. That much was observed:
+confirm `Recreated` in its output, not `Started` alone.
+
 And the server-side seam is not the whole of it — the two backends need different
 `NutrientViewer.load()` calls, so anything touching the viewer needs a browser.
 That is how the trailing-slash bug was found, with the unit suite green and a
@@ -1518,7 +1533,8 @@ them contradicts the `nutrient-document-engine` agent skill.
 - **`lib/document-provider.integration.test.ts` runs against a live engine and
   skips when none is reachable.** That skip is load-bearing: a suite that silently
   passes when the engine is down would be worse than no suite, so confirm it
-  *ran* — `4 passed`, not `4 skipped` — before believing it.
+  *ran* — `5 passed`, not `5 skipped` — before believing it. (This said `4` until
+  2026-09-21; the file has five tests, measured by running it.)
 
 ## DWS Processor API — verified behaviour
 
