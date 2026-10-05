@@ -1,9 +1,11 @@
 import type { Prisma } from '@prisma/client';
+import { del, get } from '@vercel/blob';
 import { type NextRequest, NextResponse } from 'next/server';
 import { getEffectiveDocumentFilter, requireAuth, type SessionUser } from '@/lib/auth';
 import { documentProvider } from '@/lib/document-provider';
 import { nutrientConfig } from '@/lib/nutrient-config';
 import { prisma } from '@/lib/prisma';
+import { isOwnStagedUpload } from '@/lib/staged-upload';
 import { validateUpload } from '@/lib/upload-validation';
 import { withRetry } from '@/lib/with-retry';
 
@@ -108,21 +110,37 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const stringField = (body: unknown, key: string): string => {
+  if (typeof body !== 'object' || body === null || !(key in body)) {
+    return '';
+  }
+  const value: unknown = Reflect.get(body, key);
+  return typeof value === 'string' ? value : '';
+};
+
+const discardStagedUpload = async (pathname: string): Promise<void> => {
+  // ponytail: a failed delete leaves an orphan in Blob; sweep uploads/ if they pile up.
+  await del(pathname).catch((error: unknown) => {
+    console.error('Could not remove staged upload', pathname, error);
+  });
+};
+
 /**
  * POST /api/documents
- * Upload a new document
+ * Upload a document the browser has already staged in Blob storage.
+ * See `lib/staged-upload.ts` for why uploads are staged.
  */
 export async function POST(request: NextRequest) {
   try {
     const session = await requireAuth();
 
-    // Parse multipart form data
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const title = formData.get('title') as string;
-    const author = formData.get('author') as string;
+    const body: unknown = await request.json().catch(() => null);
+    const pathname = stringField(body, 'pathname');
+    const filename = stringField(body, 'filename');
+    const title = stringField(body, 'title');
+    const author = stringField(body, 'author');
 
-    if (!file) {
+    if (!pathname || !filename) {
       return NextResponse.json({ error: 'File is required' }, { status: 400 });
     }
 
@@ -130,49 +148,66 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
 
-    // Refuse what the backend would refuse anyway, before paying to send it.
-    const validation = validateUpload({ file, limits: nutrientConfig().limits });
-
-    if (!validation.ok) {
-      return NextResponse.json({ error: validation.message }, { status: validation.status });
+    if (!isOwnStagedUpload({ pathname, uploaderId: session.user.id })) {
+      return NextResponse.json({ error: 'Upload not found' }, { status: 403 });
     }
 
-    // Upload to the configured document backend, retrying a transient failure.
-    const nutrientResult = await withRetry(() => documentProvider().uploadDocument({ file }));
+    const staged = await get(pathname, { access: 'private' });
 
-    // Store metadata in database
-    const document = await prisma.document.create({
-      data: {
-        documentEngineId: nutrientResult.documentId,
-        sessionToken: nutrientResult.sessionToken,
-        title,
-        filename: file.name,
-        fileType: file.type,
-        fileSize: BigInt(file.size),
-        author: author || session.user.name || session.user.email || 'Unknown',
-        ownerId: session.user.id,
-      },
-      select: {
-        id: true,
-        documentEngineId: true,
-        sessionToken: true,
-        title: true,
-        filename: true,
-        fileType: true,
-        fileSize: true,
-        author: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    if (staged?.statusCode !== 200) {
+      return NextResponse.json({ error: 'Upload not found' }, { status: 404 });
+    }
 
-    // Convert BigInt to string for JSON serialization
-    const serializedDocument = {
-      ...document,
-      fileSize: document.fileSize?.toString(),
-    };
+    try {
+      const file = new File([await new Response(staged.stream).arrayBuffer()], filename, {
+        type: staged.blob.contentType,
+      });
 
-    return NextResponse.json({ document: serializedDocument }, { status: 201 });
+      // Refuse what the backend would refuse anyway, before paying to send it.
+      const validation = validateUpload({ file, limits: nutrientConfig().limits });
+
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.message }, { status: validation.status });
+      }
+
+      // Upload to the configured document backend, retrying a transient failure.
+      const nutrientResult = await withRetry(() => documentProvider().uploadDocument({ file }));
+
+      const document = await prisma.document.create({
+        data: {
+          documentEngineId: nutrientResult.documentId,
+          sessionToken: nutrientResult.sessionToken,
+          title,
+          filename: file.name,
+          fileType: file.type,
+          fileSize: BigInt(file.size),
+          author: author || session.user.name || session.user.email || 'Unknown',
+          ownerId: session.user.id,
+        },
+        select: {
+          id: true,
+          documentEngineId: true,
+          sessionToken: true,
+          title: true,
+          filename: true,
+          fileType: true,
+          fileSize: true,
+          author: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      // Convert BigInt to string for JSON serialization
+      const serializedDocument = {
+        ...document,
+        fileSize: document.fileSize?.toString(),
+      };
+
+      return NextResponse.json({ document: serializedDocument }, { status: 201 });
+    } finally {
+      await discardStagedUpload(pathname);
+    }
   } catch (error) {
     if (error instanceof Error && error.message === 'Authentication required') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });

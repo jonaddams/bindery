@@ -2086,6 +2086,37 @@ library, also grep the provider's route prefix:
 grep -rn "/api/auth/" app components hooks lib
 ```
 
+## Uploads are staged in Vercel Blob
+
+**A Vercel Function refuses any request body over 4.5 MB before our code runs.**
+It answers a plain-text `413 FUNCTION_PAYLOAD_TOO_LARGE`, so the function logs
+show nothing, and a client that calls `response.json()` on the reply reports
+`Unexpected token 'R', "Request En"... is not valid JSON`. Every upload between
+4.5 MB and the 100 MB we advertised failed in production this way until
+2026-10-05, while local dev (no such limit) and every test passed. Reproduce
+it without signing in: a 5 MB POST gets the 413, a small one gets our JSON 401.
+
+So the browser stages the file in the **private** store `bindery-uploads`
+(`upload()` → `/api/documents/upload-token`), then posts only
+`{ pathname, filename, title, author }` to `/api/documents`. That route reads
+the file from Blob, sends it to the backend and deletes the staged copy.
+Outbound requests from a function have no such limit. `lib/staged-upload.ts` owns
+the ownership rule, and both routes check it:
+
+- **The client chooses the pathname**, so the `uploads/<userId>/` prefix is the
+  only thing tying a staged file to its uploader.
+- **`get()` accepts a full URL as well as a pathname** and would fetch it with
+  our Blob credentials attached, so the prefix check comes before `get()`.
+- **`..` segments are refused**, because the SDK builds a URL from the pathname
+  and URL parsing would resolve `uploads/me/../them/x` into another user's folder.
+
+**`vercel blob create-store` rewrites `.env.local`** with the Development
+environment, which includes the Neon `DATABASE_POSTGRES_*` URLs. Both
+`prisma.config.ts` and `lib/prisma.ts` prefer those over `DATABASE_URL`, so
+local dev silently points at Neon afterwards. Restore `.env.local` and add only
+`BLOB_READ_WRITE_TOKEN`. When appending to it, check it ends in a newline: this
+one did not, and the token got appended onto the end of the previous key.
+
 ## The two scheduled sweeps
 
 Both are in `vercel.json`, both take `CRON_SECRET` through `lib/cron-auth.ts`,

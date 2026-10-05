@@ -56,7 +56,7 @@ export default async function Upload() {
         <div className="max-w-3xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
             <div className="bg-background shadow rounded-lg border border-border p-6">
-              <FileUpload />
+              <FileUpload uploaderId={session.user.id} />
             </div>
           </div>
         </div>
