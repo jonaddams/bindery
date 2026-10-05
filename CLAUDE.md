@@ -2370,6 +2370,67 @@ does all three — the code and the schema are not compatible in either directio
 so there is no safe gap. Apply the migration and promote the deployment
 together, and expect a brief window where in-flight requests fail.
 
+## The Bindery design system
+
+Restyled on 2026-10-05 from the design in `~/SE/Nutrient SDK Samples Website/bindery/`
+(a React-in-the-browser prototype with mock data; the warm "Staged" palette comes
+from that folder's `styles.css`).
+
+- **`app/bindery.css` is the design's stylesheet verbatim** and should stay that way
+  so it can be re-copied when the design changes. Everything the app adds or
+  corrects goes in **`app/bindery-tokens.css`**: the base tokens (`--bg`, `--ink`,
+  `--line`, `--accent`…), `.btn`, and the overrides listed below. `globals.css`
+  aliases the pre-restyle names (`--background`, `--primary`…) onto the new
+  palette, so Tailwind utilities like `bg-surface` still follow the theme.
+- **Dark mode is `html.dark` plus `prefers-color-scheme`**, not the prototype's
+  `[data-theme="dark"]`. The prototype had exactly one dark rule; it is translated
+  in `bindery-tokens.css`.
+- **`--accent` changed meaning.** Before, it was a neutral hover grey; now it is
+  the brand ink-blue. Tailwind's `bg-accent` is remapped to `--surface` to keep old
+  markup neutral.
+- **`next/font` renames font families**, so the design's literal
+  `font-family:"Instrument Serif"` matched nothing. It reads `--font-display` now.
+- **The design's CSS has two specificity bugs**, both fixed in
+  `bindery-tokens.css`: `.bnd-lr .c.who{display:flex}` outranks the phone rule
+  `.bnd-lr .c{display:none}`, so the owner cell survived on mobile and pushed the
+  row menu onto its own line; and `.bnd-menu .who span{display:block}` also hits the
+  avatar, which is a span. **An override in `bindery-tokens.css` loses ties**,
+  because that file is imported *before* `bindery.css`. Add a `.bnd` ancestor to win.
+- **`.bnd a` colours every link in the accent**, including links styled as `.btn`.
+  `.bnd a.btn` resets it.
+- **Shared pieces:** `components/app-frame.tsx` (top bar, nav with Inbox unread
+  count, account menu holding the role switcher and sign-out, mobile tab bar),
+  `components/bindery/{icons,logo,avatar}.tsx`, `components/auth-shell.tsx`,
+  `components/rail-section.tsx`.
+- **Not ported, deliberately**, because the app has no backing data or the
+  design conflicts with a filed decision: share dialog and roles, download,
+  version grouping/stacks, the extra tools (merge, split, compress…), progress
+  percentages, per-trigger notification switches, a custom comment rail (the SDK
+  viewer owns comments), comment text in mentions (see the cost decision above),
+  and **outbound OTP phone entry**. Registration is inbound and A2P-filed, so the
+  design's "type your number, receive a code" screen must not be built.
+
+### Seeing signed-in pages locally without OAuth
+
+Every page except sign-in needs a session, and OAuth needs a real account. A
+session can be minted instead. This is what made the visual pass possible when the
+local Postgres (an EDB LaunchDaemon that needs sudo to start) was down:
+
+1. Throwaway database: `docker run -d --name bindery-restyle-pg -e
+   POSTGRES_PASSWORD=restyle -e POSTGRES_DB=bindery -p 5433:5432 postgres:17`,
+   point the **worktree's** `.env.local` `DATABASE_URL` at it, then run
+   `pnpm prisma migrate deploy` and check the datasource line says `:5433`.
+2. Insert a `users` row and a `sessions` row with a known `token`.
+3. The cookie is `better-auth.session_token=` +
+   `encodeURIComponent(token + '.' + base64(HMAC-SHA256(token, BETTER_AUTH_SECRET)))`.
+   That is better-call's `signCookieValue`; the signature is standard base64 with
+   padding.
+4. Set it with Playwright's `context.addCookies` (httpOnly, `localhost`, path `/`).
+
+Document pages will show the viewer's "Document not found" state, because the
+seeded `document_engine_id`s exist in no backend. Everything around the viewer is
+real.
+
 ## Summary
 
 The key is to write clean, testable, functional code that evolves through small, safe increments. Every change should be driven by a test that describes the desired behavior, and the implementation should be the simplest thing that makes that test pass. When in doubt, favor simplicity and readability over cleverness.
