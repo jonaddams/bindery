@@ -1,7 +1,9 @@
 'use client';
 
+import { upload } from '@vercel/blob/client';
 import { useRouter } from 'next/navigation';
 import { useCallback, useId, useState } from 'react';
+import { stagedUploadPathname } from '@/lib/staged-upload';
 
 type UploadState = {
   isUploading: boolean;
@@ -10,7 +12,16 @@ type UploadState = {
   success: boolean;
 };
 
-export function FileUpload() {
+// An error response is not always ours: Vercel answers some failures in plain
+// text before the route runs, so the body cannot be assumed to be JSON.
+const describeFailedResponse = async (response: Response): Promise<string> => {
+  const body: unknown = await response.json().catch(() => null);
+  const error: unknown =
+    typeof body === 'object' && body !== null ? Reflect.get(body, 'error') : undefined;
+  return typeof error === 'string' && error ? error : `Upload failed (${response.status})`;
+};
+
+export function FileUpload({ uploaderId }: { uploaderId: string }) {
   const router = useRouter();
   const fileUploadId = useId();
   const titleInputId = useId();
@@ -84,19 +95,24 @@ export function FileUpload() {
       setUploadState((prev) => ({ ...prev, isUploading: true, error: null }));
 
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('title', title);
-        formData.append('author', author);
+        const staged = await upload(
+          stagedUploadPathname({ uploaderId, filename: file.name }),
+          file,
+          {
+            access: 'private',
+            handleUploadUrl: '/api/documents/upload-token',
+            multipart: true,
+          }
+        );
 
         const response = await fetch('/api/documents', {
           method: 'POST',
-          body: formData,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pathname: staged.pathname, filename: file.name, title, author }),
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Upload failed');
+          throw new Error(await describeFailedResponse(response));
         }
 
         const data = await response.json();
@@ -121,7 +137,7 @@ export function FileUpload() {
         });
       }
     },
-    [router, title, author]
+    [router, title, author, uploaderId]
   );
 
   const handleUpload = useCallback(() => {

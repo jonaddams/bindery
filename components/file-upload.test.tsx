@@ -1,10 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileUpload } from '@/components/file-upload';
+
+const stageInBlob = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+}));
+vi.mock('@vercel/blob/client', () => ({
+  upload: (...a: unknown[]) => stageInBlob(...a),
 }));
 
 const getMockFile = (name = 'quarterly-report.pdf') =>
@@ -22,14 +27,14 @@ const dropFile = (file: File) => {
 
 describe('Choosing a file to upload', () => {
   it('exposes the upload prompt as a labelled file input, not a second button', () => {
-    render(<FileUpload />);
+    render(<FileUpload uploaderId="user_jon" />);
 
     expect(getFileInput()).toHaveAttribute('type', 'file');
     expect(screen.queryByRole('button', { name: /drag and drop/i })).not.toBeInTheDocument();
   });
 
   it('shows the name of the chosen file', async () => {
-    render(<FileUpload />);
+    render(<FileUpload uploaderId="user_jon" />);
 
     await userEvent.upload(getFileInput(), getMockFile());
 
@@ -37,7 +42,7 @@ describe('Choosing a file to upload', () => {
   });
 
   it('prefills the title with the file name minus its extension', async () => {
-    render(<FileUpload />);
+    render(<FileUpload uploaderId="user_jon" />);
 
     await userEvent.upload(getFileInput(), getMockFile());
 
@@ -45,7 +50,7 @@ describe('Choosing a file to upload', () => {
   });
 
   it('accepts a file dropped onto the upload area', () => {
-    render(<FileUpload />);
+    render(<FileUpload uploaderId="user_jon" />);
 
     dropFile(getMockFile('dropped-contract.pdf'));
 
@@ -54,7 +59,7 @@ describe('Choosing a file to upload', () => {
   });
 
   it('lets the user discard the chosen file and start over', async () => {
-    render(<FileUpload />);
+    render(<FileUpload uploaderId="user_jon" />);
     await userEvent.upload(getFileInput(), getMockFile());
 
     await userEvent.click(screen.getByRole('button', { name: /choose different file/i }));
@@ -66,13 +71,13 @@ describe('Choosing a file to upload', () => {
 
 describe('Upload readiness', () => {
   it('cannot be submitted before a file is chosen', () => {
-    render(<FileUpload />);
+    render(<FileUpload uploaderId="user_jon" />);
 
     expect(screen.getByRole('button', { name: /upload document/i })).toBeDisabled();
   });
 
   it('can be submitted once a file supplies a title', async () => {
-    render(<FileUpload />);
+    render(<FileUpload uploaderId="user_jon" />);
 
     await userEvent.upload(getFileInput(), getMockFile());
 
@@ -80,11 +85,93 @@ describe('Upload readiness', () => {
   });
 
   it('cannot be submitted when the title has been cleared', async () => {
-    render(<FileUpload />);
+    render(<FileUpload uploaderId="user_jon" />);
     await userEvent.upload(getFileInput(), getMockFile());
 
     await userEvent.clear(screen.getByLabelText(/document title/i));
 
     expect(screen.getByRole('button', { name: /upload document/i })).toBeDisabled();
+  });
+});
+
+describe('Uploading', () => {
+  const STAGED_PATHNAME = 'uploads/user_jon/quarterly-report-x9y8.pdf';
+
+  beforeEach(() => {
+    stageInBlob.mockResolvedValue({ pathname: STAGED_PATHNAME });
+  });
+
+  const chooseAndUpload = async () => {
+    render(<FileUpload uploaderId="user_jon" />);
+    await userEvent.upload(getFileInput(), getMockFile());
+    await userEvent.click(screen.getByRole('button', { name: /upload document/i }));
+  };
+
+  it('stages the file privately in the uploader’s own folder, bypassing the function body limit', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ document: { id: 'doc_1' } }, { status: 201 })
+    );
+
+    await chooseAndUpload();
+
+    expect(stageInBlob).toHaveBeenCalledWith(
+      'uploads/user_jon/quarterly-report.pdf',
+      expect.any(File),
+      expect.objectContaining({
+        access: 'private',
+        handleUploadUrl: '/api/documents/upload-token',
+        multipart: true,
+      })
+    );
+  });
+
+  it('then registers the staged file as a document', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(Response.json({ document: { id: 'doc_1' } }, { status: 201 }));
+
+    await chooseAndUpload();
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe('/api/documents');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      pathname: STAGED_PATHNAME,
+      filename: 'quarterly-report.pdf',
+      title: 'quarterly-report',
+      author: '',
+    });
+    expect(await screen.findByText(/upload successful/i)).toBeInTheDocument();
+  });
+
+  it('shows the reason the server gives for refusing the document', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ error: 'Files of type text/plain are not accepted.' }, { status: 415 })
+    );
+
+    await chooseAndUpload();
+
+    expect(
+      await screen.findByText('Files of type text/plain are not accepted.')
+    ).toBeInTheDocument();
+  });
+
+  it('shows a readable error when the server answers with something other than JSON', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('Request Entity Too Large', { status: 413 })
+    );
+
+    await chooseAndUpload();
+
+    expect(await screen.findByText('Upload failed (413)')).toBeInTheDocument();
+  });
+
+  it('shows why staging failed and never registers a document', async () => {
+    stageInBlob.mockRejectedValue(new Error('Content type mismatch'));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    await chooseAndUpload();
+
+    expect(await screen.findByText('Content type mismatch')).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
