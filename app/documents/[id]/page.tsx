@@ -1,9 +1,8 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { AppFrame } from '@/components/app-frame';
 import { DocumentTools } from '@/components/document-tools';
 import { DocumentViewer } from '@/components/document-viewer';
-import { SignOutButton } from '@/components/sign-out-button';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { getDocumentWriteFilter, getEffectiveDocumentFilter, requireAuth } from '@/lib/auth';
 import { nutrientConfig } from '@/lib/nutrient-config';
 import { operationsFor, toOperationSummary } from '@/lib/operations';
@@ -94,110 +93,70 @@ export default async function DocumentView({ params }: { params: Promise<Params>
     };
 
     return (
-      <div className="min-h-screen bg-surface">
-        {/* Header */}
-        <div className="bg-background shadow border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4 sm:py-6">
-              <div className="flex items-center space-x-2 sm:space-x-4">
-                <Link
-                  href="/dashboard"
-                  className="text-primary hover:text-primary-hover transition-colors cursor-pointer"
-                  aria-label="Back to dashboard"
-                >
-                  <svg
-                    className="h-5 w-5 sm:h-6 sm:w-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    aria-hidden="true"
-                  >
-                    <title>Back arrow</title>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                    />
-                  </svg>
-                </Link>
-              </div>
-              <div className="flex items-center space-x-2 sm:space-x-4">
-                <ThemeToggle />
-                <div className="flex items-center space-x-2 sm:space-x-4">
-                  <span className="text-xs sm:text-sm text-muted truncate max-w-20 sm:max-w-none">
-                    {session.user.name || session.user.email}
-                  </span>
-                  <SignOutButton />
-                </div>
-              </div>
-            </div>
+      <AppFrame user={session.user} active="document">
+        <div className="bnd-page">
+          <Link href="/dashboard" className="bnd-back">
+            Documents
+          </Link>
+          {/* Document metadata - Compact table format */}
+          <div className="bg-background shadow rounded-lg border border-border p-3 mb-3">
+            <table className="w-full text-xs">
+              <tbody className="divide-y divide-border">
+                <tr>
+                  <td className="py-1.5 font-medium text-muted w-20">Title</td>
+                  <td className="py-1.5 text-foreground font-medium" colSpan={3}>
+                    {document.title}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 font-medium text-muted w-20">Size</td>
+                  <td className="py-1.5 text-foreground w-20">
+                    {formatFileSize(document.fileSize)}
+                  </td>
+                  <td className="py-1.5 font-medium text-muted w-24">Uploaded by</td>
+                  <td className="py-1.5 text-foreground">
+                    {document.owner.name || document.owner.email}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 font-medium text-muted">Created</td>
+                  <td className="py-1.5 text-foreground" colSpan={3}>
+                    {formatDate(document.createdAt)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 font-medium text-muted">Type</td>
+                  <td className="py-1.5 text-foreground break-all" colSpan={3}>
+                    {document.fileType}
+                  </td>
+                </tr>
+                {document.derivedFrom && (
+                  <tr>
+                    <td className="py-1.5 font-medium text-muted">Redacted from</td>
+                    <td className="py-1.5" colSpan={3}>
+                      <Link
+                        href={`/documents/${document.derivedFrom.id}`}
+                        className="text-primary hover:text-primary-hover transition-colors"
+                      >
+                        {document.derivedFrom.title}
+                      </Link>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
+
+          <DocumentTools
+            documentId={document.id}
+            canRunTools={canRunTools}
+            operations={operations}
+          />
+
+          {/* Document viewer */}
+          <DocumentViewer documentId={document.id} className="h-[calc(100vh-240px)]" />
         </div>
-
-        {/* Main content */}
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 sm:px-0">
-            {/* Document metadata - Compact table format */}
-            <div className="bg-background shadow rounded-lg border border-border p-3 mb-3">
-              <table className="w-full text-xs">
-                <tbody className="divide-y divide-border">
-                  <tr>
-                    <td className="py-1.5 font-medium text-muted w-20">Title</td>
-                    <td className="py-1.5 text-foreground font-medium" colSpan={3}>
-                      {document.title}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 font-medium text-muted w-20">Size</td>
-                    <td className="py-1.5 text-foreground w-20">
-                      {formatFileSize(document.fileSize)}
-                    </td>
-                    <td className="py-1.5 font-medium text-muted w-24">Uploaded by</td>
-                    <td className="py-1.5 text-foreground">
-                      {document.owner.name || document.owner.email}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 font-medium text-muted">Created</td>
-                    <td className="py-1.5 text-foreground" colSpan={3}>
-                      {formatDate(document.createdAt)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 font-medium text-muted">Type</td>
-                    <td className="py-1.5 text-foreground break-all" colSpan={3}>
-                      {document.fileType}
-                    </td>
-                  </tr>
-                  {document.derivedFrom && (
-                    <tr>
-                      <td className="py-1.5 font-medium text-muted">Redacted from</td>
-                      <td className="py-1.5" colSpan={3}>
-                        <Link
-                          href={`/documents/${document.derivedFrom.id}`}
-                          className="text-primary hover:text-primary-hover transition-colors"
-                        >
-                          {document.derivedFrom.title}
-                        </Link>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <DocumentTools
-              documentId={document.id}
-              canRunTools={canRunTools}
-              operations={operations}
-            />
-
-            {/* Document viewer */}
-            <DocumentViewer documentId={document.id} className="h-[calc(100vh-240px)]" />
-          </div>
-        </div>
-      </div>
+      </AppFrame>
     );
   } catch {
     redirect('/auth/signin');

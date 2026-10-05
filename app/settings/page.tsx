@@ -1,6 +1,5 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { DashboardHeader } from '@/components/dashboard-header';
+import { AppFrame } from '@/components/app-frame';
 import { NotificationSettings } from '@/components/notification-settings';
 import { requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -28,31 +27,25 @@ export default async function SettingsPage() {
     });
 
     return (
-      <div className="min-h-screen bg-surface">
-        <DashboardHeader user={session.user} title="Settings" />
-
-        <div className="max-w-3xl mx-auto sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0 space-y-6">
-            <nav className="text-sm">
-              <Link href="/dashboard" className="text-primary hover:text-primary-hover">
-                &larr; Back to documents
-              </Link>
-            </nav>
-
-            <h2 className="text-lg font-medium text-foreground">Notifications</h2>
-
-            <NotificationSettings
-              initialPhone={user?.phone ?? null}
-              initialVerified={Boolean(user?.phoneVerifiedAt)}
-              initialChannel={user?.notificationChannel ?? 'EMAIL'}
-              // The digits come from the environment so the screen always shows
-              // the number the app actually receives on; the punctuation matches
-              // what jonaddams.com/sms publishes.
-              programNumber={formatProgramNumber(process.env.TWILIO_PHONE_NUMBER ?? '')}
-            />
+      <AppFrame user={session.user} active="settings">
+        <div className="bnd-page narrow">
+          <div className="bnd-head">
+            <div>
+              <h1 className="bnd-h1">Settings</h1>
+              <p className="bnd-sub">How Bindery reaches you when someone mentions you.</p>
+            </div>
           </div>
+          <NotificationSettings
+            initialPhone={user?.phone ?? null}
+            initialVerified={Boolean(user?.phoneVerifiedAt)}
+            initialChannel={user?.notificationChannel ?? 'EMAIL'}
+            // The digits come from the environment so the screen always shows
+            // the number the app actually receives on; the punctuation matches
+            // what jonaddams.com/sms publishes.
+            programNumber={formatProgramNumber(process.env.TWILIO_PHONE_NUMBER ?? '')}
+          />
         </div>
-      </div>
+      </AppFrame>
     );
   } catch {
     redirect('/auth/signin');
