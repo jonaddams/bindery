@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FrameSection } from '@/components/app-frame';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import type { SessionUser } from '@/lib/auth';
 
@@ -25,7 +26,7 @@ const stubMentions = (unread: number) =>
     .spyOn(globalThis, 'fetch')
     .mockResolvedValue(new Response(JSON.stringify({ mentions: [], unread }), { status: 200 }));
 
-const renderFrame = (active: 'dashboard' | 'inbox' | 'settings' | 'upload' = 'dashboard') =>
+const renderFrame = (active: FrameSection = 'dashboard') =>
   render(
     <ThemeProvider>
       <AppFrame user={USER} active={active}>
@@ -57,6 +58,15 @@ describe('App frame', () => {
     expect(mainNav().getByRole('link', { name: /Inbox/ })).toHaveAttribute('aria-current', 'page');
     expect(mainNav().getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
     expect(mainNav().getByRole('link', { name: 'Documents' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('treats a document page as part of Documents', () => {
+    renderFrame('document');
+
+    expect(mainNav().getByRole('link', { name: 'Documents' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
   });
 
   it('shows how many mentions are unread next to Inbox', async () => {

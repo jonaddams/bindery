@@ -66,6 +66,10 @@ const useUnreadMentions = (): number => {
   return unread;
 };
 
+// A document is reached from the list, so the list stays lit while reading one.
+const isActive = (item: NavItem, active: FrameSection): boolean =>
+  item.id === active || (item.id === 'dashboard' && active === 'document');
+
 const navLabel = (item: NavItem, unread: number): string | undefined =>
   item.id === 'inbox' && unread > 0 ? `${item.label}, ${unread} unread` : undefined;
 
@@ -133,8 +137,8 @@ export function AppFrame({ user, active, children }: AppFrameProps) {
     <Link
       key={item.id}
       href={item.href}
-      className={active === item.id ? 'on' : ''}
-      aria-current={active === item.id ? 'page' : undefined}
+      className={isActive(item, active) ? 'on' : ''}
+      aria-current={isActive(item, active) ? 'page' : undefined}
       aria-label={navLabel(item, unread)}
     >
       {withIcon && item.icon(20)}

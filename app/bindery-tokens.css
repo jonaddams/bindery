@@ -45,3 +45,16 @@
 .bnd a.btn{color:var(--bg)}
 .bnd a.btn.ghost{color:var(--ink)}
 .bnd a.btn:hover{text-decoration:none}
+
+/* .bnd-menu .who span{display:block} is meant for the name/email lines but
+   also catches the avatar, which is a span. */
+.bnd-menu .who .bnd-avatar{display:inline-flex;color:#fff;font-size:11px}
+
+/* The design hides list cells on phones with .bnd-lr .c, but the owner cell's
+   .bnd-lr .c.who{display:flex} outranks it and pushes the row menu to a new line. */
+@media (max-width:720px){.bnd .bnd-lr .c.who{display:none}}
+
+/* Native form controls follow the theme instead of rendering light in dark mode. */
+:root.dark{color-scheme:dark}
+@media (prefers-color-scheme: dark){:root:not(.light){color-scheme:dark}}
+.bnd input[type="radio"],.bnd input[type="checkbox"]{accent-color:var(--bnd-hi)}
