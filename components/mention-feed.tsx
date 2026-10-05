@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { Avatar } from '@/components/bindery/avatar';
+import { BI } from '@/components/bindery/icons';
 import { formatRelativeTime } from '@/lib/relative-time';
 
 type Mention = {
@@ -12,6 +14,26 @@ type Mention = {
   createdAt: string;
   read: boolean;
 };
+
+type MentionFeedProps = {
+  /**
+   * `card` is the dashboard nudge — unread only, at most two, and nothing at
+   * all when there is nothing new. `inbox` is the whole feed with its controls.
+   */
+  variant: 'card' | 'inbox';
+};
+
+const CARD_LIMIT = 2;
+
+function MentionTime({ iso }: { iso: string }) {
+  // `title` keeps the exact moment available on hover, since the relative form
+  // deliberately loses it.
+  return (
+    <time className="bnd-time r" dateTime={iso} title={new Date(iso).toLocaleString()}>
+      {formatRelativeTime({ iso })}
+    </time>
+  );
+}
 
 /**
  * Where a mention is discoverable in the app, rather than only in an email or a
@@ -32,7 +54,7 @@ type Mention = {
  * read that were never looked at, and an unread count nobody can trust is worse
  * than no count.
  */
-export function MentionFeed() {
+export function MentionFeed({ variant }: MentionFeedProps) {
   const [mentions, setMentions] = useState<Mention[]>([]);
   const [unread, setUnread] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -85,80 +107,98 @@ export function MentionFeed() {
     return null;
   }
 
-  return (
-    <div className="bg-background shadow rounded-lg border border-border p-4 mb-6">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-medium text-foreground">Mentions</h2>
-          {unread > 0 && (
-            <span
-              data-testid="unread-count"
-              className="rounded-full bg-primary text-primary-foreground text-xs font-medium px-2 py-0.5"
-            >
-              {unread}
-            </span>
-          )}
-        </div>
+  if (variant === 'card') {
+    const fresh = mentions.filter((mention) => !mention.read).slice(0, CARD_LIMIT);
+    if (fresh.length === 0) return null;
 
+    return (
+      <div className="bnd-card" style={{ marginBottom: 28 }}>
+        <div className="bnd-card-h">
+          <h3>Mentions</h3>
+          <Link href="/inbox" className="bnd-hint">
+            View inbox →
+          </Link>
+        </div>
+        {fresh.map((mention) => (
+          <div key={mention.id} className="bnd-mention">
+            <Avatar id={mention.authorName} name={mention.authorName} />
+            <p>
+              <b style={{ color: 'var(--ink)', fontWeight: 600 }}>{mention.authorName}</b> mentioned
+              you on <Link href={`/documents/${mention.documentId}`}>{mention.documentTitle}</Link>
+            </p>
+            <MentionTime iso={mention.createdAt} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="bnd-head">
+        <div>
+          <h1 className="bnd-h1">Inbox</h1>
+          <p className="bnd-sub">
+            {unread > 0 ? (
+              <>
+                <span data-testid="unread-count">{unread}</span> unread
+              </>
+            ) : (
+              'All caught up'
+            )}
+          </p>
+        </div>
         {unread > 0 && (
-          <button
-            type="button"
-            onClick={() => markRead()}
-            className="text-xs text-primary hover:text-primary-hover transition-colors cursor-pointer"
-          >
-            Mark all read
+          <button type="button" className="btn ghost sm" onClick={() => markRead()}>
+            {BI.check(13)} Mark all read
           </button>
         )}
       </div>
 
       {mentions.length === 0 ? (
-        <p className="text-xs text-muted">No mentions yet.</p>
+        <div className="bnd-empty">
+          <span className="ic">{BI.inbox(22)}</span>
+          <h3>No mentions yet</h3>
+          <p>
+            When someone @mentions you in a comment, it shows up here and — if you&apos;ve turned it
+            on — by email or text.
+          </p>
+          <Link href="/settings" className="bnd-hint">
+            Notification settings →
+          </Link>
+        </div>
       ) : (
-        <ul className="divide-y divide-border">
+        <div className="bnd-card">
           {mentions.map((mention) => (
-            <li key={mention.id} className="py-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-              {!mention.read && (
-                <span
-                  role="img"
-                  aria-label="Unread"
-                  className="h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0"
-                />
+            <div key={mention.id} className="bnd-note" style={{ cursor: 'default' }}>
+              {mention.read ? (
+                <span className="bnd-dot" />
+              ) : (
+                <span className="bnd-dot unread" role="img" aria-label="Unread" />
               )}
-
-              <span className={`text-xs ${mention.read ? 'text-muted' : 'text-foreground'}`}>
-                <span className="font-medium">{mention.authorName}</span> mentioned you on
-              </span>
-
-              <Link
-                href={`/documents/${mention.documentId}`}
-                className="text-xs text-primary hover:text-primary-hover transition-colors"
-              >
-                {mention.documentTitle}
-              </Link>
-
-              {/* `title` keeps the exact moment available on hover, since the
-                  relative form deliberately loses it. */}
-              <time
-                className="text-xs text-subtle"
-                dateTime={mention.createdAt}
-                title={new Date(mention.createdAt).toLocaleString()}
-              >
-                {formatRelativeTime({ iso: mention.createdAt })}
-              </time>
-
-              {!mention.read && (
-                <button
-                  type="button"
-                  onClick={() => markRead([mention.id])}
-                  className="text-xs text-muted hover:text-foreground transition-colors cursor-pointer ml-auto"
-                >
-                  Mark read
-                </button>
-              )}
-            </li>
+              <Avatar id={mention.authorName} name={mention.authorName} />
+              <div style={{ minWidth: 0 }}>
+                <p>
+                  <b>{mention.authorName}</b> mentioned you on{' '}
+                  <Link href={`/documents/${mention.documentId}`}>{mention.documentTitle}</Link>
+                </p>
+                {!mention.read && (
+                  <div className="via">
+                    <button
+                      type="button"
+                      className="bnd-link"
+                      onClick={() => markRead([mention.id])}
+                    >
+                      Mark read
+                    </button>
+                  </div>
+                )}
+              </div>
+              <MentionTime iso={mention.createdAt} />
+            </div>
           ))}
-        </ul>
+        </div>
       )}
-    </div>
+    </>
   );
 }

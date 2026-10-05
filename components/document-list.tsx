@@ -2,7 +2,9 @@
 
 import type { Document } from '@prisma/client';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Avatar } from '@/components/bindery/avatar';
+import { BI } from '@/components/bindery/icons';
 import { useSession } from '@/lib/auth-client';
 
 type DocumentWithOwner = Document & {
@@ -12,6 +14,186 @@ type DocumentWithOwner = Document & {
     email: string;
   };
 };
+
+type Scope = 'all' | 'mine' | 'shared';
+
+const SCOPES: ReadonlyArray<readonly [Scope, string]> = [
+  ['all', 'All'],
+  ['mine', 'Mine'],
+  ['shared', 'Shared with me'],
+];
+
+const formatFileSize = (bytes: bigint | null) => {
+  if (!bytes || bytes === BigInt(0)) return '0 Bytes';
+  const bytesNumber = Number(bytes);
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytesNumber) / Math.log(k));
+  return `${Math.round((bytesNumber / k ** i) * 100) / 100} ${sizes[i]}`;
+};
+
+const formatDate = (date: Date) => {
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(date));
+};
+
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+function FileIcon({ document }: { document: DocumentWithOwner }) {
+  const extension = document.filename.split('.').pop()?.toLowerCase() ?? '';
+  const tone = extension.startsWith('doc')
+    ? 'docx'
+    : document.fileType.startsWith('image/')
+      ? 'img'
+      : '';
+  return (
+    <span className={`bnd-ficon ${tone}`} aria-hidden="true">
+      {extension.slice(0, 4).toUpperCase()}
+    </span>
+  );
+}
+
+type RowMenuProps = {
+  document: DocumentWithOwner;
+  canDelete: boolean;
+  onDelete: () => void;
+};
+
+function RowMenu({ document, canDelete, onDelete }: RowMenuProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: MouseEvent) => {
+      if (ref.current && event.target instanceof Node && !ref.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.document.addEventListener('mousedown', onPointer);
+    window.document.addEventListener('keydown', onKey);
+    return () => {
+      window.document.removeEventListener('mousedown', onPointer);
+      window.document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const copyLink = () => {
+    setOpen(false);
+    void navigator.clipboard?.writeText(`${window.location.origin}/documents/${document.id}`);
+  };
+
+  const label = `Actions for ${document.title}`;
+
+  return (
+    <div className="bnd-pop" ref={ref}>
+      <button
+        className="bnd-ib"
+        type="button"
+        aria-label={label}
+        title={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {BI.more(16)}
+      </button>
+      {open && (
+        <div className="bnd-menu" role="menu">
+          <Link href={`/documents/${document.id}`} className="mi" role="menuitem">
+            {BI.docs(15)} Open
+          </Link>
+          <button className="mi" type="button" role="menuitem" onClick={copyLink}>
+            {BI.link(15)} Copy link
+          </button>
+          {canDelete && (
+            <>
+              <hr />
+              <button
+                className="mi bad"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onDelete();
+                }}
+              >
+                {BI.trash(15)} Delete…
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type DeleteModalProps = {
+  title: string;
+  isDeleting: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+};
+
+function DeleteModal({ title, isDeleting, onConfirm, onCancel }: DeleteModalProps) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isDeleting) onCancel();
+    };
+    window.document.addEventListener('keydown', onKey);
+    return () => window.document.removeEventListener('keydown', onKey);
+  }, [isDeleting, onCancel]);
+
+  return (
+    <div className="bnd-scrim">
+      <div className="bnd-modal" role="dialog" aria-modal="true" aria-label="Delete this document?">
+        <div className="bnd-modal-h">
+          <span className="bnd-warnic">{BI.alert(18)}</span>
+          <h2>Delete this document?</h2>
+          <button
+            className="bnd-ib"
+            type="button"
+            aria-label="Close"
+            onClick={onCancel}
+            disabled={isDeleting}
+            style={{ margin: '-6px -6px 0 0' }}
+          >
+            {BI.x(16)}
+          </button>
+        </div>
+        <div className="bnd-modal-b">
+          <p style={{ margin: 0, color: 'var(--ink-2)', textWrap: 'pretty' }}>
+            <b style={{ color: 'var(--ink)', fontWeight: 600, overflowWrap: 'anywhere' }}>
+              {title}
+            </b>{' '}
+            will be removed permanently. You can&apos;t undo this.
+          </p>
+        </div>
+        <div className="bnd-modal-f">
+          <button className="btn ghost" type="button" onClick={onCancel} disabled={isDeleting}>
+            Cancel
+          </button>
+          <button
+            className="btn bnd-danger"
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function DocumentList() {
   const { data: session, isPending } = useSession();
@@ -23,6 +205,8 @@ export function DocumentList() {
     documentTitle: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [query, setQuery] = useState('');
+  const [scope, setScope] = useState<Scope>('all');
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -47,24 +231,7 @@ export function DocumentList() {
     fetchDocuments();
   }, [fetchDocuments]);
 
-  const formatFileSize = (bytes: bigint | null) => {
-    if (!bytes || bytes === BigInt(0)) return '0 Bytes';
-    const bytesNumber = Number(bytes);
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytesNumber) / Math.log(k));
-    return `${Math.round((bytesNumber / k ** i) * 100) / 100} ${sizes[i]}`;
-  };
-
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(date));
-  };
+  const isMine = (document: DocumentWithOwner) => document.ownerId === session?.user?.id;
 
   const canDeleteDocument = (document: DocumentWithOwner) => {
     // Don't show delete buttons if session is still loading
@@ -118,259 +285,200 @@ export function DocumentList() {
     }
   };
 
-  const handleDeleteCancel = () => {
+  const handleDeleteCancel = useCallback(() => {
     setDeleteConfirmation(null);
-  };
+  }, []);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div
+        role="status"
+        aria-label="Loading documents"
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          padding: '48px 0',
+          color: 'var(--ink-3)',
+        }}
+      >
+        <span className="bnd-spin lg" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-md bg-error/10 border border-error/20 p-4">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <svg
-              className="h-5 w-5 text-error"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-error">Error loading documents</h3>
-            <div className="mt-2 text-sm text-muted">
-              <p>{error}</p>
-            </div>
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={fetchDocuments}
-                className="bg-error/10 hover:bg-error/20 px-3 py-2 text-sm font-medium text-error rounded-md transition-colors cursor-pointer"
-              >
-                Try again
-              </button>
-            </div>
-          </div>
+      <div className="bnd-alert bad" role="alert">
+        {BI.xcircle(18)}
+        <div>
+          <b>Error loading documents</b>
+          <p>{error}</p>
+          <button
+            type="button"
+            className="btn ghost sm"
+            onClick={fetchDocuments}
+            style={{ marginTop: 10 }}
+          >
+            {BI.retry(13)} Try again
+          </button>
         </div>
       </div>
     );
   }
 
-  if (documents.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <svg
-          className="mx-auto h-12 w-12 text-subtle"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          aria-hidden="true"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-          />
-        </svg>
-        <h3 className="mt-2 text-sm font-medium text-foreground">No documents</h3>
-        <p className="mt-1 text-sm text-muted">Get started by uploading your first document.</p>
-      </div>
+  const counts: Record<Scope, number> = {
+    all: documents.length,
+    mine: documents.filter(isMine).length,
+    shared: documents.filter((document) => !isMine(document)).length,
+  };
+
+  const needle = query.trim().toLowerCase();
+  const visible = documents
+    .filter((document) =>
+      scope === 'all' ? true : scope === 'mine' ? isMine(document) : !isMine(document)
+    )
+    .filter(
+      (document) =>
+        !needle ||
+        document.title.toLowerCase().includes(needle) ||
+        document.filename.toLowerCase().includes(needle)
     );
-  }
+
+  const ownerLabel = (document: DocumentWithOwner) =>
+    isMine(document) ? 'You' : document.owner.name || document.owner.email;
 
   return (
     <>
-      {/* Mobile card layout */}
-      <div className="block md:hidden">
-        <div className="space-y-4">
-          {documents.map((document) => (
-            <div
-              key={document.id}
-              className="bg-background border border-border rounded-lg p-4 shadow-sm"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="text-sm font-medium text-foreground truncate pr-2">
-                  {document.title}
-                </h3>
-                <div className="flex items-center space-x-2 flex-shrink-0">
-                  <Link
-                    href={`/documents/${document.id}`}
-                    className="text-primary hover:text-primary-hover transition-colors cursor-pointer text-sm"
-                  >
-                    View
-                  </Link>
-                  {canDeleteDocument(document) && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteClick(document)}
-                      className="text-error hover:text-error/80 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed text-sm"
-                      disabled={isDeleting}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted">Size</span>
-                  <span className="text-foreground">{formatFileSize(document.fileSize)}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted">Uploaded by</span>
-                  <span className="text-foreground truncate ml-2">
-                    {document.owner.name || document.owner.email}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted">Created</span>
-                  <span className="text-foreground">{formatDate(document.createdAt)}</span>
-                </div>
-              </div>
-            </div>
-          ))}
+      <div className="bnd-head">
+        <div>
+          <h1 className="bnd-h1">Documents</h1>
+          {documents.length > 0 && (
+            <p className="bnd-sub">
+              {`${plural(counts.all, 'document')} · ${counts.shared} shared with you`}
+            </p>
+          )}
         </div>
+        {documents.length > 0 && (
+          <Link href="/upload" className="btn bnd-hide-m" style={{ color: 'var(--bg)' }}>
+            {BI.upload(15)} Upload document
+          </Link>
+        )}
       </div>
 
-      {/* Desktop table layout */}
-      <div className="hidden md:block overflow-hidden shadow ring-1 ring-border md:rounded-lg">
-        <table className="min-w-full divide-y divide-border">
-          <thead className="bg-surface">
-            <tr>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider"
-              >
-                Name
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider"
-              >
-                Size
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider"
-              >
-                Uploaded by
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider"
-              >
-                Created
-              </th>
-              <th scope="col" className="relative px-6 py-3">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-background divide-y divide-border">
-            {documents.map((document) => (
-              <tr key={document.id} className="hover:bg-surface-hover transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-                  {document.title}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                  {formatFileSize(document.fileSize)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                  {document.owner.name || document.owner.email}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                  {formatDate(document.createdAt)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <div className="flex items-center justify-end space-x-4">
-                    <Link
-                      href={`/documents/${document.id}`}
-                      className="text-primary hover:text-primary-hover transition-colors cursor-pointer"
-                    >
-                      View
-                    </Link>
-                    {canDeleteDocument(document) && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteClick(document)}
-                        className="text-error hover:text-error/80 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-                        disabled={isDeleting}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Delete Confirmation Modal */}
-      {deleteConfirmation && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-background border border-border rounded-lg max-w-md w-full p-6 shadow-lg">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <svg
-                  className="h-6 w-6 text-error"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth="1.5"
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
-                  />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-lg font-medium text-foreground">Delete Document</h3>
-                <div className="mt-2">
-                  <p className="text-sm text-muted">
-                    Are you sure you want to delete &ldquo;{deleteConfirmation.documentTitle}
-                    &rdquo;? This action cannot be undone.
-                  </p>
-                </div>
-              </div>
+      {documents.length === 0 ? (
+        <div className="bnd-empty">
+          <span className="ic">{BI.docs(22)}</span>
+          <h3>No documents yet</h3>
+          <p>Upload a PDF, Word file or scan to get started.</p>
+          <Link href="/upload" className="btn" style={{ color: 'var(--bg)' }}>
+            {BI.upload(15)} Upload a document
+          </Link>
+          <span className="bnd-hint" style={{ marginTop: 6 }}>
+            Documents colleagues share with you will appear here too.
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="bnd-toolbar">
+            <div className="bnd-search">
+              {BI.search(15)}
+              <input
+                className="bnd-input"
+                placeholder="Search documents"
+                aria-label="Search documents"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
             </div>
-            <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-              <button
-                type="button"
-                onClick={handleDeleteConfirm}
-                disabled={isDeleting}
-                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-error text-base font-medium text-primary-foreground hover:bg-error/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-error sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
-              >
-                {isDeleting ? 'Deleting...' : 'Delete'}
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteCancel}
-                disabled={isDeleting}
-                className="mt-3 w-full inline-flex justify-center rounded-md border border-border shadow-sm px-4 py-2 bg-surface text-base font-medium text-accent-foreground hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed transition-colors"
-              >
-                Cancel
-              </button>
+            <div className="bnd-seg">
+              {SCOPES.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={scope === key ? 'on' : ''}
+                  aria-pressed={scope === key}
+                  onClick={() => setScope(key)}
+                >
+                  {label} <span className="n">{counts[key]}</span>
+                </button>
+              ))}
             </div>
           </div>
-        </div>
+
+          {visible.length === 0 ? (
+            <div className="bnd-empty slim">
+              <h3>No matches</h3>
+              <p>
+                {needle ? `Nothing matches “${query.trim()}”` : 'Nothing here'}
+                {scope !== 'all' ? ' in this view' : ''}.
+              </p>
+              <button
+                className="bnd-link"
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  setScope('all');
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div className="bnd-list">
+              <div className="bnd-lh" aria-hidden="true">
+                <span>Name</span>
+                <span>Size</span>
+                <span>Owner</span>
+                <span>Created</span>
+                <span />
+              </div>
+              {visible.map((document) => (
+                <div key={document.id} className="bnd-lr" style={{ cursor: 'default' }}>
+                  <div className="bnd-name">
+                    <FileIcon document={document} />
+                    <div className="tx">
+                      <div className="t">
+                        <b>
+                          <Link href={`/documents/${document.id}`} style={{ color: 'inherit' }}>
+                            {document.title}
+                          </Link>
+                        </b>
+                      </div>
+                      <span className="m">
+                        {formatFileSize(document.fileSize)} · {ownerLabel(document)} ·{' '}
+                        {formatDate(document.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="c">{formatFileSize(document.fileSize)}</span>
+                  <span className="c who">
+                    <Avatar
+                      id={document.ownerId}
+                      name={document.owner.name || document.owner.email}
+                      size="sm"
+                    />
+                    {ownerLabel(document)}
+                  </span>
+                  <span className="c">{formatDate(document.createdAt)}</span>
+                  <RowMenu
+                    document={document}
+                    canDelete={canDeleteDocument(document)}
+                    onDelete={() => handleDeleteClick(document)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {deleteConfirmation && (
+        <DeleteModal
+          title={deleteConfirmation.documentTitle}
+          isDeleting={isDeleting}
+          onConfirm={handleDeleteConfirm}
+          onCancel={handleDeleteCancel}
+        />
       )}
     </>
   );

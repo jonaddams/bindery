@@ -12,8 +12,9 @@ export default async function Dashboard() {
       <AppFrame user={session.user} active="dashboard">
         <div className="bnd-page">
           {/* Mentions, above the documents: being mentioned is the thing most
-              likely to want attention, and it renders nothing until loaded. */}
-          <MentionFeed />
+              likely to want attention. The card shows unread ones only, and
+              renders nothing until loaded or when nothing is new. */}
+          <MentionFeed variant="card" />
           <DocumentList />
         </div>
       </AppFrame>
