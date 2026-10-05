@@ -1,12 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BI } from '@/components/bindery/icons';
 import type { NutrientTarget } from '@/lib/nutrient-config';
 import { viewerLoadOptions } from '@/lib/viewer-load-options';
 
 type DocumentViewerProps = {
   documentId: string;
-  className?: string;
 };
 
 type ViewerError = {
@@ -14,7 +14,7 @@ type ViewerError = {
   code?: string;
 };
 
-export function DocumentViewer({ documentId, className = '' }: DocumentViewerProps) {
+export function DocumentViewer({ documentId }: DocumentViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerInstanceRef = useRef<NutrientViewerInstance | null>(null);
   const isInitializingRef = useRef(false);
@@ -239,57 +239,26 @@ export function DocumentViewer({ documentId, className = '' }: DocumentViewerPro
 
   if (error) {
     return (
-      <div
-        className={`flex items-center justify-center bg-surface rounded-lg border-2 border-dashed border-border ${className}`}
-      >
-        <div className="text-center p-6">
-          <svg
-            className="mx-auto h-12 w-12 text-error"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-          >
-            <title>Error</title>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.316 16.5c-.77.833.192 2.5 1.732 2.5z"
-            />
-          </svg>
-          <h3 className="mt-2 text-sm font-medium text-foreground">Failed to load document</h3>
-          <p className="mt-1 text-sm text-muted">{error.message}</p>
-          <div className="mt-6">
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background cursor-pointer transition-colors"
-            >
-              Try again
-            </button>
-          </div>
+      <div className="bnd-viewer" style={{ justifyContent: 'center' }}>
+        <div className="bnd-empty" style={{ border: 0 }}>
+          <span className="ic">{BI.alert(22)}</span>
+          <h3>Failed to load document</h3>
+          <p>{error.message}</p>
+          <button type="button" onClick={handleRetry} className="btn">
+            Try again
+          </button>
         </div>
       </div>
     );
   }
 
+  // `.bnd-viewer` gives the frame a definite height, and the container fills it.
+  // The SDK renders nothing into a container without real height — the
+  // dimension check above waits for exactly that.
   return (
-    <div
-      className={`bg-background rounded-lg shadow-sm border border-border ${className}`}
-      style={{ position: 'relative' }}
-    >
+    <div className="bnd-viewer">
       {/* NutrientViewer container - it handles its own loading state */}
-      <div
-        ref={containerRef}
-        className="w-full h-full rounded-lg"
-        style={{
-          width: '100%',
-          height: '100%',
-          position: 'relative',
-          minHeight: '600px', // Ensure minimum height for viewer
-        }}
-      />
+      <div ref={containerRef} style={{ position: 'relative', flex: 1, minHeight: 0 }} />
     </div>
   );
 }
