@@ -40,3 +40,8 @@
 .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line-strong)}
 .btn.ghost:hover{border-color:var(--ink);opacity:1;background:var(--surface)}
 .btn.sm{padding:6px 12px;font-size:var(--text-xs)}
+
+/* Links styled as buttons: .bnd a would otherwise paint them in the accent. */
+.bnd a.btn{color:var(--bg)}
+.bnd a.btn.ghost{color:var(--ink)}
+.bnd a.btn:hover{text-decoration:none}

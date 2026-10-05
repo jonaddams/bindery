@@ -157,7 +157,7 @@ export function AppFrame({ user, active, children }: AppFrameProps) {
           </nav>
           <div className="bnd-top-r">
             {active !== 'upload' && (
-              <Link href="/upload" className="btn sm bnd-hide-m" style={{ color: 'var(--bg)' }}>
+              <Link href="/upload" className="btn sm bnd-hide-m">
                 {BI.plus(14)} Upload
               </Link>
             )}
