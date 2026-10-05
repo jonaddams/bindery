@@ -1,96 +1,28 @@
 @import "tailwindcss";
+@import "./bindery-tokens.css";
+@import "./bindery.css";
 
-/* Light theme (default) */
+/* The pre-restyle token names, kept as aliases onto the Bindery palette so any
+   markup still written against them follows the theme. New markup should use
+   the Bindery tokens (--bg, --ink, --line, --accent…) and .bnd-* classes. */
 :root {
-  /* Backgrounds */
-  --background: #ffffff;
-  --surface: #f9fafb;
-  --surface-hover: #f3f4f6;
-  --border: #e5e7eb;
-  
-  /* Text colors */
-  --foreground: #111827;
-  --muted: #374151;
-  --subtle: #6b7280;
-  
-  /* Brand colors */
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
-  --primary-foreground: #ffffff;
-  
-  /* Status colors */
-  --success: #10b981;
-  --error: #ef4444;
-  --warning: #f59e0b;
-  
-  /* Interactive elements */
-  --accent: #f3f4f6;
-  --accent-hover: #e5e7eb;
-  --accent-foreground: #374151;
-}
-
-/* Dark theme */
-:root.dark {
-  /* Backgrounds */
-  --background: #0f1419;
-  --surface: #1f2937;
-  --surface-hover: #374151;
-  --border: #374151;
-  
-  /* Text colors */
-  --foreground: #f9fafb;
-  --muted: #9ca3af;
-  --subtle: #6b7280;
-  
-  /* Brand colors */
-  --primary: #60a5fa;
-  --primary-hover: #3b82f6;
-  --primary-foreground: #111827;
-  
-  /* Status colors */
-  --success: #34d399;
-  --error: #f87171;
-  --warning: #fbbf24;
-  
-  /* Interactive elements */
-  --accent: #374151;
-  --accent-hover: #4b5563;
-  --accent-foreground: #f3f4f6;
-}
-
-/* Auto dark mode support */
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    /* Backgrounds */
-    --background: #0f1419;
-    --surface: #1f2937;
-    --surface-hover: #374151;
-    --border: #374151;
-    
-    /* Text colors */
-    --foreground: #f9fafb;
-    --muted: #9ca3af;
-    --subtle: #6b7280;
-    
-    /* Brand colors */
-    --primary: #60a5fa;
-    --primary-hover: #3b82f6;
-    --primary-foreground: #111827;
-    
-    /* Status colors */
-    --success: #34d399;
-    --error: #f87171;
-    --warning: #fbbf24;
-    
-    /* Interactive elements */
-    --accent: #374151;
-    --accent-hover: #4b5563;
-    --accent-foreground: #f3f4f6;
-  }
+  --background: var(--bg);
+  --surface-hover: color-mix(in srgb, var(--ink) 5%, var(--surface));
+  --border: var(--line);
+  --foreground: var(--ink);
+  --muted: var(--ink-2);
+  --subtle: var(--ink-3);
+  --primary: var(--accent);
+  --primary-hover: var(--accent-2);
+  --primary-foreground: var(--accent-fg);
+  --success: rgb(36, 128, 78);
+  --error: rgb(184, 56, 56);
+  --warning: rgb(168, 112, 20);
+  --accent-hover: color-mix(in srgb, var(--ink) 8%, var(--surface));
+  --accent-foreground: var(--ink-2);
 }
 
 @theme inline {
-  /* Map CSS variables to Tailwind theme */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
@@ -104,18 +36,17 @@
   --color-success: var(--success);
   --color-error: var(--error);
   --color-warning: var(--warning);
-  --color-accent: var(--accent);
+  --color-accent: var(--surface);
   --color-accent-hover: var(--accent-hover);
   --color-accent-foreground: var(--accent-foreground);
-  
-  /* Fonts */
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
