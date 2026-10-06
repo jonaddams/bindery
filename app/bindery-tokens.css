@@ -1,0 +1,67 @@
+/* Bindery design system — ported from the Nutrient SDK Samples site design
+   ("Staged", warm palette) and its Bindery section. Base tokens first, then the
+   shared .btn, then bindery.css verbatim except that the prototype's
+   [data-theme="dark"] is mapped onto this app's html.dark / prefers-color-scheme
+   switch (see components/providers/theme-provider.tsx). */
+
+:root {
+  --bg:#F7F5F0; --bg-elev:#FFFFFF; --surface:#FBFAF6;
+  --line:#E7E5DE; --line-strong:#D6D3CB;
+  --ink:#1C1917; --ink-2:#44403C; --ink-3:#78716C; --ink-4:#A8A29E; --ink-5:#D6D3CB;
+  --accent:#38486B; --accent-2:#4D6391; --accent-fg:#FFFFFF; --accent-tint:rgba(56,72,107,.08);
+  --font-body: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-instrument-serif), "Times New Roman", serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --display-style: italic; --display-weight: 400;
+  --text-base:15px; --text-sm:13px; --text-xs:11px;
+  --r-1:4px; --r-2:8px; --r-3:12px; --r-pill:999px;
+  --ease: cubic-bezier(.3,.7,.4,1);
+}
+:root.dark {
+  --bg:#16140F; --bg-elev:#1F1C16; --surface:#1B1813;
+  --line:#2C2922; --line-strong:#3D3A30;
+  --ink:#F5F2EA; --ink-2:#D6D3CB; --ink-3:#A8A29E; --ink-4:#78716C; --ink-5:#44403C;
+  --accent:#94A6CC; --accent-2:#B4C3DF; --accent-tint:rgba(99,123,179,.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --bg:#16140F; --bg-elev:#1F1C16; --surface:#1B1813;
+    --line:#2C2922; --line-strong:#3D3A30;
+    --ink:#F5F2EA; --ink-2:#D6D3CB; --ink-3:#A8A29E; --ink-4:#78716C; --ink-5:#44403C;
+    --accent:#94A6CC; --accent-2:#B4C3DF; --accent-tint:rgba(99,123,179,.12);
+  }
+}
+:root.dark .bnd{--ok:rgb(120,200,150);--warn:rgb(230,182,92);--bad:rgb(238,140,140);--bnd-hi:color-mix(in srgb,var(--accent) 42%,white);--bnd-tint:color-mix(in srgb,var(--accent) 30%,transparent)}
+@media (prefers-color-scheme: dark){:root:not(.light) .bnd{--ok:rgb(120,200,150);--warn:rgb(230,182,92);--bad:rgb(238,140,140);--bnd-hi:color-mix(in srgb,var(--accent) 42%,white);--bnd-tint:color-mix(in srgb,var(--accent) 30%,transparent)}}
+
+.btn{appearance:none;border:1px solid var(--ink);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r-2);font-size:var(--text-sm);font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:opacity .12s var(--ease)}
+.btn:hover{opacity:.85}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line-strong)}
+.btn.ghost:hover{border-color:var(--ink);opacity:1;background:var(--surface)}
+.btn.sm{padding:6px 12px;font-size:var(--text-xs)}
+
+/* Links styled as buttons: .bnd a would otherwise paint them in the accent. */
+.bnd a.btn{color:var(--bg)}
+.bnd a.btn.ghost{color:var(--ink)}
+.bnd a.btn:hover{text-decoration:none}
+
+/* .bnd-menu .who span{display:block} is meant for the name/email lines but
+   also catches the avatar, which is a span. */
+.bnd-menu .who .bnd-avatar{display:inline-flex;color:#fff;font-size:11px}
+
+/* The design hides list cells on phones with .bnd-lr .c, but the owner cell's
+   .bnd-lr .c.who{display:flex} outranks it and pushes the row menu to a new line. */
+@media (max-width:720px){.bnd .bnd-lr .c.who{display:none}}
+
+/* Native form controls follow the theme instead of rendering light in dark mode. */
+:root.dark{color-scheme:dark}
+@media (prefers-color-scheme: dark){:root:not(.light){color-scheme:dark}}
+.bnd input[type="radio"],.bnd input[type="checkbox"]{accent-color:var(--bnd-hi)}
+
+/* The design clips .bnd-list with overflow:hidden to keep the header and hovered
+   rows inside its rounded corners, which also clips each row's actions menu.
+   Round the end children instead and let the menu escape. */
+.bnd .bnd-list{overflow:visible}
+.bnd .bnd-list>:first-child{border-top-left-radius:calc(var(--r-3) - 1px);border-top-right-radius:calc(var(--r-3) - 1px)}
+.bnd .bnd-list>:last-child{border-bottom-left-radius:calc(var(--r-3) - 1px);border-bottom-right-radius:calc(var(--r-3) - 1px)}

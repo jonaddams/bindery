@@ -1,11 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { signOut } from '@/lib/auth-client';
 
 type SignOutButtonProps = {
   className?: string;
+  icon?: ReactNode;
+  role?: 'menuitem';
 };
 
 const DEFAULT_CLASS_NAME =
@@ -22,7 +24,7 @@ const DEFAULT_CLASS_NAME =
  * through the client keeps the method right and keeps the URL out of the markup,
  * so the next auth change cannot repeat it.
  */
-export function SignOutButton({ className }: SignOutButtonProps = {}) {
+export function SignOutButton({ className, icon, role }: SignOutButtonProps = {}) {
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
 
@@ -46,7 +48,9 @@ export function SignOutButton({ className }: SignOutButtonProps = {}) {
       onClick={handleSignOut}
       disabled={isSigningOut}
       className={className ?? DEFAULT_CLASS_NAME}
+      role={role}
     >
+      {icon}
       Sign out
     </button>
   );

@@ -1,7 +1,9 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { DashboardHeader } from '@/components/dashboard-header';
+import { AppFrame } from '@/components/app-frame';
+import { Avatar } from '@/components/bindery/avatar';
+import { BI } from '@/components/bindery/icons';
 import { NotificationSettings } from '@/components/notification-settings';
+import { SignOutButton } from '@/components/sign-out-button';
 import { requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { formatProgramNumber } from '@/lib/sms-program';
@@ -27,20 +29,34 @@ export default async function SettingsPage() {
       select: { phone: true, phoneVerifiedAt: true, notificationChannel: true },
     });
 
+    const displayName = session.user.name || session.user.email;
+
     return (
-      <div className="min-h-screen bg-surface">
-        <DashboardHeader user={session.user} title="Settings" />
-
-        <div className="max-w-3xl mx-auto sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0 space-y-6">
-            <nav className="text-sm">
-              <Link href="/dashboard" className="text-primary hover:text-primary-hover">
-                &larr; Back to documents
-              </Link>
-            </nav>
-
-            <h2 className="text-lg font-medium text-foreground">Notifications</h2>
-
+      <AppFrame user={session.user} active="settings">
+        <div className="bnd-page narrow">
+          <div className="bnd-head">
+            <div>
+              <h1 className="bnd-h1">Settings</h1>
+              <p className="bnd-sub">How Bindery reaches you when someone mentions you.</p>
+            </div>
+          </div>
+          <div className="bnd-stack">
+            <section className="bnd-card">
+              <div className="bnd-card-h">
+                <h2 style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>Account</h2>
+              </div>
+              <div
+                className="bnd-card-b"
+                style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}
+              >
+                <Avatar id={session.user.id} name={displayName} size="lg" />
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <b style={{ display: 'block', fontWeight: 600 }}>{displayName}</b>
+                  <span className="bnd-hint">{session.user.email}</span>
+                </div>
+                <SignOutButton className="btn ghost sm" icon={BI.signout(14)} />
+              </div>
+            </section>
             <NotificationSettings
               initialPhone={user?.phone ?? null}
               initialVerified={Boolean(user?.phoneVerifiedAt)}
@@ -52,7 +68,7 @@ export default async function SettingsPage() {
             />
           </div>
         </div>
-      </div>
+      </AppFrame>
     );
   } catch {
     redirect('/auth/signin');

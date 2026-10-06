@@ -3,6 +3,9 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+import { AuthShell } from '@/components/auth-shell';
+import { BI } from '@/components/bindery/icons';
+import { BinderyLogo } from '@/components/bindery/logo';
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic';
@@ -25,37 +28,33 @@ function ErrorContent() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8">
+    <div className="bnd-auth-card">
+      <BinderyLogo href={null} size={28} fontSize={19} />
+      <div className="bnd-alert bad" role="alert">
+        {BI.xcircle(18)}
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Authentication Error
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">{getErrorMessage(error)}</p>
-        </div>
-        <div>
-          <Link
-            href="/auth/signin"
-            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Try Again
-          </Link>
+          <b>Authentication error</b>
+          <p>{getErrorMessage(error)}</p>
+          {error ? (
+            <div className="bnd-mono" style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
+              Error: {error}
+            </div>
+          ) : null}
         </div>
       </div>
+      <Link href="/auth/signin" className="btn">
+        Try again
+      </Link>
     </div>
   );
 }
 
 export default function AuthError() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      }
-    >
-      <ErrorContent />
-    </Suspense>
+    <AuthShell>
+      <Suspense fallback={<span className="bnd-spin lg" role="status" aria-label="Loading" />}>
+        <ErrorContent />
+      </Suspense>
+    </AuthShell>
   );
 }

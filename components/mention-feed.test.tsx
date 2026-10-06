@@ -44,7 +44,7 @@ afterEach(() => {
 
 describe('Showing mentions', () => {
   it('says who mentioned you and on what', async () => {
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     expect(await screen.findByText(/Bryan Rust/)).toBeVisible();
     expect(screen.getByRole('link', { name: /Q3 Contract/ })).toHaveAttribute(
@@ -58,7 +58,7 @@ describe('Showing mentions', () => {
   it('shows an unread count', async () => {
     feed = { mentions: [aMention(), aMention({ id: 'mention_2' })], unread: 2 };
 
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     expect(await screen.findByText('2')).toBeVisible();
   });
@@ -71,7 +71,7 @@ describe('Showing mentions', () => {
       unread: 1,
     };
 
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     expect(await screen.findByText('4 hours ago')).toBeVisible();
   });
@@ -80,7 +80,7 @@ describe('Showing mentions', () => {
     const createdAt = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     feed = { mentions: [aMention({ createdAt })], unread: 1 };
 
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     expect(await screen.findByText('4 hours ago')).toHaveAttribute(
       'title',
@@ -91,7 +91,7 @@ describe('Showing mentions', () => {
   it('says so when there is nothing', async () => {
     feed = { mentions: [], unread: 0 };
 
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     expect(await screen.findByText(/no mentions|nothing/i)).toBeVisible();
   });
@@ -99,7 +99,7 @@ describe('Showing mentions', () => {
   it('does not show a count when everything is read', async () => {
     feed = { mentions: [aMention({ read: true })], unread: 0 };
 
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     await screen.findByText(/Bryan Rust/);
     expect(screen.queryByTestId('unread-count')).not.toBeInTheDocument();
@@ -109,7 +109,7 @@ describe('Showing mentions', () => {
 describe('Marking read', () => {
   it('marks one mention read', async () => {
     const user = userEvent.setup();
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     await user.click(await screen.findByRole('button', { name: /mark read/i }));
 
@@ -121,7 +121,7 @@ describe('Marking read', () => {
 
   it('marks everything read', async () => {
     const user = userEvent.setup();
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     await user.click(await screen.findByRole('button', { name: /mark all read/i }));
 
@@ -133,7 +133,7 @@ describe('Marking read', () => {
   // count becomes something nobody can trust.
   it('does not mark anything read merely by following the link', async () => {
     const user = userEvent.setup();
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     await user.click(await screen.findByRole('link', { name: /Q3 Contract/ }));
 
@@ -143,7 +143,7 @@ describe('Marking read', () => {
   it('offers no mark-read control for something already read', async () => {
     feed = { mentions: [aMention({ read: true })], unread: 0 };
 
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     await screen.findByText(/Bryan Rust/);
     expect(screen.queryByRole('button', { name: /^mark read$/i })).not.toBeInTheDocument();
@@ -152,9 +152,67 @@ describe('Marking read', () => {
   it('hides the mark-all control when nothing is unread', async () => {
     feed = { mentions: [aMention({ read: true })], unread: 0 };
 
-    render(<MentionFeed />);
+    render(<MentionFeed variant="inbox" />);
 
     await screen.findByText(/Bryan Rust/);
     expect(screen.queryByRole('button', { name: /mark all read/i })).not.toBeInTheDocument();
+  });
+});
+
+// The dashboard card is a nudge, not the inbox: unread only, a couple at most,
+// and nothing at all when there is nothing new.
+describe('The dashboard card', () => {
+  it('shows unread mentions and points to the inbox', async () => {
+    render(<MentionFeed variant="card" />);
+
+    expect(await screen.findByText(/Bryan Rust/)).toBeVisible();
+    expect(screen.getByRole('link', { name: /view inbox/i })).toHaveAttribute('href', '/inbox');
+  });
+
+  it('leaves out mentions already read', async () => {
+    feed = {
+      mentions: [aMention(), aMention({ id: 'mention_2', authorName: 'Kris Letang', read: true })],
+      unread: 1,
+    };
+
+    render(<MentionFeed variant="card" />);
+
+    await screen.findByText(/Bryan Rust/);
+    expect(screen.queryByText(/Kris Letang/)).not.toBeInTheDocument();
+  });
+
+  it('shows at most two', async () => {
+    feed = {
+      mentions: ['Ada Byron', 'Bea Arthur', 'Cy Young'].map((authorName, i) =>
+        aMention({ id: `mention_${i}`, authorName })
+      ),
+      unread: 3,
+    };
+
+    render(<MentionFeed variant="card" />);
+
+    await screen.findByText(/Ada Byron/);
+    expect(screen.getByText(/Bea Arthur/)).toBeVisible();
+    expect(screen.queryByText(/Cy Young/)).not.toBeInTheDocument();
+  });
+
+  it('renders nothing when nothing is unread', async () => {
+    feed = { mentions: [aMention({ read: true })], unread: 0 };
+
+    const { container } = render(<MentionFeed variant="card" />);
+
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  // Reading stays explicit here too: the card has no mark-read controls, and
+  // following its link marks nothing.
+  it('does not mark anything read when the link is followed', async () => {
+    const user = userEvent.setup();
+    render(<MentionFeed variant="card" />);
+
+    await user.click(await screen.findByRole('link', { name: /Q3 Contract/ }));
+
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 });

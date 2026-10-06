@@ -92,6 +92,17 @@ describe('Upload readiness', () => {
 
     expect(screen.getByRole('button', { name: /upload document/i })).toBeDisabled();
   });
+
+  it('says why it cannot be submitted when the title has been cleared', async () => {
+    render(<FileUpload uploaderId="user_jon" />);
+    await userEvent.upload(getFileInput(), getMockFile());
+
+    await userEvent.clear(screen.getByLabelText(/document title/i));
+
+    expect(screen.getByLabelText(/document title/i)).toHaveAccessibleDescription(
+      'Give the document a title.'
+    );
+  });
 });
 
 describe('Uploading', () => {

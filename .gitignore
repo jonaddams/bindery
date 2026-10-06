@@ -72,3 +72,6 @@ CLAUDE.md
 # them.
 .claude/settings.local.json
 .claude/worktrees/
+
+# Playwright MCP screenshots and console logs
+.playwright-mcp/

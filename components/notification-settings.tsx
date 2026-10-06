@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BI } from '@/components/bindery/icons';
 import { CONSENT_DISCLOSURES, PROGRAM_LEGAL_URLS, PROGRAM_NAME } from '@/lib/sms-program';
 
 type Channel = 'EMAIL' | 'SMS' | 'BOTH';
@@ -162,111 +163,127 @@ export function NotificationSettings({
   };
 
   return (
-    <section className="bg-background border border-border rounded-lg p-4 sm:p-6 space-y-6">
-      <div>
-        <h2 className="text-lg font-medium text-foreground">Text notifications</h2>
-        <p className="mt-1 text-sm text-muted">
-          {verified
-            ? `${PROGRAM_NAME} can text this number.`
-            : `Text notifications are off. ${PROGRAM_NAME} never texts a number until that number has texted us first.`}
-        </p>
-      </div>
-
-      <div className="space-y-2 text-sm text-muted">
-        {CONSENT_DISCLOSURES.map((disclosure) => (
-          <p key={disclosure}>{disclosure}</p>
-        ))}
-        <p>
-          See the{' '}
-          <a
-            href={PROGRAM_LEGAL_URLS.terms}
-            className="text-primary hover:text-primary-hover underline"
-          >
-            terms of service
-          </a>{' '}
-          and the{' '}
-          <a
-            href={PROGRAM_LEGAL_URLS.privacy}
-            className="text-primary hover:text-primary-hover underline"
-          >
-            privacy policy
-          </a>
-          .
-        </p>
-      </div>
-
+    <>
       {error ? (
-        <p className="text-sm text-error" role="alert">
-          {error}
-        </p>
+        <div className="bnd-alert bad" role="alert">
+          {BI.xcircle(18)}
+          <p>{error}</p>
+        </div>
       ) : null}
 
-      {verified && phone ? (
-        <div className="space-y-3">
-          <p className="text-sm text-foreground">
-            <span className="font-medium">Registered:</span>{' '}
-            <span className="font-mono">{phone}</span>
-          </p>
-          <button
-            type="button"
-            onClick={forgetNumber}
-            disabled={isBusy}
-            className="inline-flex items-center px-3 py-2 border border-border text-sm font-medium rounded-md text-foreground bg-surface hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50"
-          >
-            Forget this number
-          </button>
+      <section className="bnd-card">
+        <div className="bnd-card-h">
+          <h2 style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>Notifications</h2>
         </div>
-      ) : code ? (
-        <div className="space-y-3">
-          <p className="text-sm text-foreground">
-            From the mobile number you want to register, text this code to{' '}
-            <span className="font-medium">{programNumber}</span>:
-          </p>
-          <p className="font-mono text-3xl tracking-widest text-foreground">{code}</p>
-          <p className="text-sm text-muted">
-            The code is good for 10 minutes and can only be used once. We will reply once to
-            confirm.
-          </p>
-          <button
-            type="button"
-            onClick={checkStatus}
-            className="inline-flex items-center px-3 py-2 border border-border text-sm font-medium rounded-md text-foreground bg-surface hover:bg-surface-hover transition-colors cursor-pointer"
-          >
-            Check now
-          </button>
+        <div className="bnd-card-b">
+          <fieldset className="bnd-field" style={{ border: 0, margin: 0, padding: 0 }}>
+            <legend className="bnd-lbl" style={{ padding: 0, marginBottom: 10 }}>
+              Where should notifications go?
+            </legend>
+            {CHANNEL_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className={`bnd-radio ${channel === option.value ? 'on' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="notification-channel"
+                  value={option.value}
+                  checked={channel === option.value}
+                  onChange={() => chooseChannel(option.value)}
+                  style={{ margin: '1px 0 0', width: 18, height: 18, accentColor: 'var(--bnd-hi)' }}
+                />
+                <span>
+                  <b>{option.label}</b>
+                  <small>{option.hint}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
         </div>
-      ) : (
-        <button
-          type="button"
-          onClick={startRegistration}
-          disabled={isBusy}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary-hover transition-colors cursor-pointer disabled:opacity-50"
-        >
-          Set up text notifications
-        </button>
-      )}
+      </section>
 
-      <fieldset className="space-y-3 border-t border-border pt-4">
-        <legend className="text-sm font-medium text-foreground">
-          Where should notifications go?
-        </legend>
-        {CHANNEL_OPTIONS.map((option) => (
-          <label key={option.value} className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="radio"
-              name="notification-channel"
-              value={option.value}
-              checked={channel === option.value}
-              onChange={() => chooseChannel(option.value)}
-              className="mt-1 cursor-pointer"
-            />
-            <span>
-              <span className="block text-sm text-foreground">{option.label}</span>
-              <span className="block text-xs text-subtle">{option.hint}</span>
+      <section className="bnd-card">
+        <div className="bnd-card-h">
+          <h2 style={{ margin: 0, fontSize: 13.5, fontWeight: 600 }}>Text notifications</h2>
+          {verified ? (
+            <span className="bnd-pill">
+              <span className="bnd-dot ok" />
+              Verified
             </span>
-          </label>
-        ))}
-      </fieldset>
-    </section>
+          ) : null}
+        </div>
+        <div className="bnd-card-b bnd-stack">
+          <p className="bnd-hint" style={{ margin: 0, fontSize: 13 }}>
+            {verified
+              ? `${PROGRAM_NAME} can text this number.`
+              : `Text notifications are off. ${PROGRAM_NAME} never texts a number until that number has texted us first.`}
+          </p>
+
+          {verified && phone ? (
+            <div className="bnd-reg">
+              <span className="ic">{BI.phone(16)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span className="bnd-hint">Registered</span>
+                <b className="bnd-mono" style={{ display: 'block', fontWeight: 500 }}>
+                  {phone}
+                </b>
+              </div>
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={forgetNumber}
+                disabled={isBusy}
+              >
+                Forget this number
+              </button>
+            </div>
+          ) : code ? (
+            <div className="bnd-stack" style={{ gap: 10 }}>
+              <p style={{ margin: 0 }}>
+                From the mobile number you want to register, text this code to{' '}
+                <b className="bnd-mono">{programNumber}</b>:
+              </p>
+              <div className="bnd-reg">
+                <span className="ic">{BI.phone(16)}</span>
+                <b
+                  className="bnd-mono"
+                  style={{ flex: 1, fontSize: 28, fontWeight: 500, letterSpacing: '0.2em' }}
+                >
+                  {code}
+                </b>
+                <button type="button" className="btn sm ghost" onClick={checkStatus}>
+                  Check now
+                </button>
+              </div>
+              <p className="bnd-hint" style={{ margin: 0 }}>
+                The code is good for 10 minutes and can only be used once. We will reply once to
+                confirm.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <button type="button" className="btn" onClick={startRegistration} disabled={isBusy}>
+                Set up text notifications
+              </button>
+            </div>
+          )}
+
+          <ul className="bnd-legal">
+            {CONSENT_DISCLOSURES.map((disclosure) => (
+              <li key={disclosure}>
+                <span>{disclosure}</span>
+              </li>
+            ))}
+            <li>
+              <span>
+                See the <a href={PROGRAM_LEGAL_URLS.terms}>terms of service</a> and the{' '}
+                <a href={PROGRAM_LEGAL_URLS.privacy}>privacy policy</a>.
+              </span>
+            </li>
+          </ul>
+        </div>
+      </section>
+    </>
   );
 }

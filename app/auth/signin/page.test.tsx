@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PROGRAM_LEGAL_URLS } from '@/lib/sms-program';
 
 const social = vi.fn();
 const useSession = vi.fn();
@@ -14,6 +16,10 @@ const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 
 const { default: SignIn } = await import('@/app/auth/signin/page');
+const { ThemeProvider } = await import('@/components/providers/theme-provider');
+
+// The page carries the theme toggle, which reads the theme from context.
+const render = (ui: ReactElement) => rtlRender(<ThemeProvider>{ui}</ThemeProvider>);
 
 beforeEach(() => {
   social.mockReset();
@@ -60,5 +66,37 @@ describe('Signing in', () => {
 
     expect(screen.queryByRole('button', { name: /google/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /microsoft/i })).not.toBeInTheDocument();
+  });
+
+  it('shows that it is redirecting, and blocks a second click, while the sign-in starts', async () => {
+    social.mockReturnValue(new Promise(() => {}));
+    render(<SignIn />);
+
+    await userEvent.click(screen.getByRole('button', { name: /google/i }));
+
+    expect(screen.getByRole('button', { name: /redirecting to google/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /microsoft/i })).toBeDisabled();
+  });
+
+  it('offers the buttons again when the sign-in could not start', async () => {
+    social.mockRejectedValue(new Error('network'));
+    render(<SignIn />);
+
+    await userEvent.click(screen.getByRole('button', { name: /google/i }));
+
+    expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeEnabled();
+  });
+
+  it('links the terms and the privacy policy', () => {
+    render(<SignIn />);
+
+    expect(screen.getByRole('link', { name: /terms/i })).toHaveAttribute(
+      'href',
+      PROGRAM_LEGAL_URLS.terms
+    );
+    expect(screen.getByRole('link', { name: /privacy/i })).toHaveAttribute(
+      'href',
+      PROGRAM_LEGAL_URLS.privacy
+    );
   });
 });

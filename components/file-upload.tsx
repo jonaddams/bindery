@@ -3,11 +3,11 @@
 import { upload } from '@vercel/blob/client';
 import { useRouter } from 'next/navigation';
 import { useCallback, useId, useState } from 'react';
+import { BI } from '@/components/bindery/icons';
 import { stagedUploadPathname } from '@/lib/staged-upload';
 
 type UploadState = {
   isUploading: boolean;
-  progress: number;
   error: string | null;
   success: boolean;
 };
@@ -21,15 +21,24 @@ const describeFailedResponse = async (response: Response): Promise<string> => {
   return typeof error === 'string' && error ? error : `Upload failed (${response.status})`;
 };
 
+const WORD_EXTENSIONS = new Set(['doc', 'docx']);
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'tif', 'tiff', 'webp']);
+
+const fileIconVariant = (extension: string): string => {
+  if (WORD_EXTENSIONS.has(extension)) return 'docx';
+  if (IMAGE_EXTENSIONS.has(extension)) return 'img';
+  return '';
+};
+
 export function FileUpload({ uploaderId }: { uploaderId: string }) {
   const router = useRouter();
   const fileUploadId = useId();
   const titleInputId = useId();
   const authorInputId = useId();
+  const titleHintId = useId();
 
   const [uploadState, setUploadState] = useState<UploadState>({
     isUploading: false,
-    progress: 0,
     error: null,
     success: false,
   });
@@ -41,7 +50,6 @@ export function FileUpload({ uploaderId }: { uploaderId: string }) {
   const resetUploadState = useCallback(() => {
     setUploadState({
       isUploading: false,
-      progress: 0,
       error: null,
       success: false,
     });
@@ -119,7 +127,6 @@ export function FileUpload({ uploaderId }: { uploaderId: string }) {
 
         setUploadState({
           isUploading: false,
-          progress: 100,
           error: null,
           success: true,
         });
@@ -131,7 +138,6 @@ export function FileUpload({ uploaderId }: { uploaderId: string }) {
       } catch (error) {
         setUploadState({
           isUploading: false,
-          progress: 0,
           error: error instanceof Error ? error.message : 'Upload failed',
           success: false,
         });
@@ -154,237 +160,164 @@ export function FileUpload({ uploaderId }: { uploaderId: string }) {
     return `${Math.round((bytes / k ** i) * 100) / 100} ${sizes[i]}`;
   };
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-medium text-foreground">Select a document to upload</h2>
-        <p className="mt-1 text-sm text-muted">
-          Supported formats: PDF, Word documents, images, and other common file types.
-        </p>
-      </div>
+  const titleMissing = !title.trim();
+  const extension = selectedFile?.name.split('.').pop()?.toLowerCase() ?? '';
 
-      {/* File drop zone. Deliberately not a button: the labelled file input inside
-          it is the keyboard-accessible control, and wrapping that in a button would
-          both nest interactive elements and absorb their text into its own name. */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop is a
-          pointer-only enhancement here; the labelled file input below provides the
-          equivalent keyboard path, so this element needs no interactive role. */}
-      <div
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        className={`relative border-2 border-dashed rounded-lg p-6 transition-colors cursor-pointer ${
-          dragOver
-            ? 'border-primary bg-primary/10'
-            : selectedFile
-              ? 'border-success bg-success/10'
-              : 'border-border hover:border-primary/50'
-        }`}
-      >
-        <div className="text-center">
-          {selectedFile ? (
-            <div className="space-y-2">
-              <svg
-                className="mx-auto h-12 w-12 text-success"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <title>Document selected</title>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <div className="text-sm text-foreground">
-                <p className="font-medium">{selectedFile.name}</p>
-                <p className="text-muted">{formatFileSize(selectedFile.size)}</p>
-              </div>
+  return (
+    <div className="bnd-card">
+      <div className="bnd-card-b bnd-stack" style={{ gap: 18 }}>
+        {selectedFile ? (
+          <div className="bnd-file">
+            <span className={`bnd-ficon ${fileIconVariant(extension)}`}>
+              {extension.slice(0, 4).toUpperCase()}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <b>{selectedFile.name}</b>
+              <span>{formatFileSize(selectedFile.size)}</span>
+              {/* The staging upload reports no progress we surface, so the bar is
+                  indeterminate rather than showing a percentage it cannot know. */}
+              {uploadState.isUploading && (
+                <div style={{ marginTop: 8 }}>
+                  <div className="bnd-bar ind">
+                    <i />
+                  </div>
+                  <span style={{ display: 'block', marginTop: 5 }}>Uploading…</span>
+                </div>
+              )}
+            </div>
+            {!uploadState.isUploading && (
               <button
                 type="button"
+                className="bnd-link"
                 onClick={() => {
                   setSelectedFile(null);
                   resetUploadState();
                 }}
-                className="text-sm text-primary hover:text-primary-hover transition-colors cursor-pointer"
               >
                 Choose different file
               </button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <svg
-                className="mx-auto h-12 w-12 text-subtle"
-                stroke="currentColor"
-                fill="none"
-                viewBox="0 0 48 48"
-                aria-hidden="true"
-              >
-                <title>Upload area</title>
-                <path
-                  d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <div className="text-sm text-muted">
-                <label htmlFor={fileUploadId} className="cursor-pointer">
-                  <span className="font-medium text-primary hover:text-primary-hover transition-colors">
-                    Click to upload
-                  </span>
-                  <span> or drag and drop</span>
-                  <input
-                    id={fileUploadId}
-                    name="file-upload"
-                    type="file"
-                    className="sr-only"
-                    onChange={handleFileChange}
-                  />
-                </label>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Document metadata form */}
-      {selectedFile && (
-        <div className="space-y-4">
-          <div>
-            <label htmlFor={titleInputId} className="block text-sm font-medium text-foreground">
-              Document Title *
+            )}
+          </div>
+        ) : (
+          /* File drop zone. Deliberately not a button: the labelled file input inside
+             it is the keyboard-accessible control, and wrapping that in a button would
+             both nest interactive elements and absorb their text into its own name. */
+          /* biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop is a
+             pointer-only enhancement here; the labelled file input below provides the
+             equivalent keyboard path, so this element needs no interactive role. */
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            className={`bnd-drop ${dragOver ? 'drag' : ''}`}
+          >
+            <span className="ic">{BI.upload(20)}</span>
+            <label htmlFor={fileUploadId} style={{ cursor: 'pointer' }}>
+              <b>
+                <span className="bnd-link">Click to upload</span>
+                <span> or drag and drop</span>
+              </b>
+              <input
+                id={fileUploadId}
+                name="file-upload"
+                type="file"
+                className="sr-only"
+                onChange={handleFileChange}
+              />
             </label>
-            <input
-              type="text"
-              id={titleInputId}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter a title for your document"
-              className="mt-1 block w-full rounded-md border-border bg-background text-foreground shadow-sm focus:border-primary focus:ring-primary focus:ring-2 focus:ring-offset-2 focus:ring-offset-background sm:text-sm border px-3 py-2 placeholder:text-muted"
-              required
-            />
+            <span className="bnd-hint">
+              PDF, Word documents, images, and other common file types.
+            </span>
           </div>
-          <div>
-            <label htmlFor={authorInputId} className="block text-sm font-medium text-foreground">
-              Author (optional)
-            </label>
-            <input
-              type="text"
-              id={authorInputId}
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder="Enter author name"
-              className="mt-1 block w-full rounded-md border-border bg-background text-foreground shadow-sm focus:border-primary focus:ring-primary focus:ring-2 focus:ring-offset-2 focus:ring-offset-background sm:text-sm border px-3 py-2 placeholder:text-muted"
-            />
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* Upload progress */}
-      {uploadState.isUploading && (
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm text-foreground">
-            <span>Uploading...</span>
-            <span>{uploadState.progress}%</span>
-          </div>
-          <div className="w-full bg-surface rounded-full h-2">
-            <div
-              className="bg-primary h-2 rounded-full transition-all duration-300"
-              style={{ width: `${uploadState.progress}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Success message */}
-      {uploadState.success && (
-        <div className="rounded-md bg-success/10 border border-success/20 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg
-                className="h-5 w-5 text-success"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <title>Success</title>
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.236 4.53L7.53 10.53a.75.75 0 00-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z"
-                  clipRule="evenodd"
-                />
-              </svg>
+        {selectedFile && (
+          <>
+            <div className="bnd-field">
+              <label htmlFor={titleInputId} className="bnd-lbl">
+                Document title<span className="req">*</span>
+              </label>
+              <input
+                type="text"
+                id={titleInputId}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Enter a title for your document"
+                className={`bnd-input ${titleMissing ? 'err' : ''}`}
+                aria-invalid={titleMissing}
+                aria-describedby={titleMissing ? titleHintId : undefined}
+                disabled={uploadState.isUploading}
+                required
+              />
+              {titleMissing && (
+                <span id={titleHintId} className="bnd-hint bad">
+                  Give the document a title.
+                </span>
+              )}
             </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-success">Upload successful!</h3>
-              <div className="mt-2 text-sm text-success/90">
-                <p>Your document has been uploaded. Redirecting to document view...</p>
-              </div>
+            <div className="bnd-field">
+              <label htmlFor={authorInputId} className="bnd-lbl">
+                Author{' '}
+                <span className="bnd-muted" style={{ fontWeight: 400 }}>
+                  (optional)
+                </span>
+              </label>
+              <input
+                type="text"
+                id={authorInputId}
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+                placeholder="Enter author name"
+                className="bnd-input"
+                disabled={uploadState.isUploading}
+              />
+            </div>
+          </>
+        )}
+
+        {uploadState.success && (
+          <div className="bnd-alert info" role="status">
+            {BI.check(18)}
+            <div>
+              <b>Upload successful!</b>
+              <p>Your document has been uploaded. Redirecting to document view...</p>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Error message */}
-      {uploadState.error && (
-        <div className="rounded-md bg-error/10 border border-error/20 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg
-                className="h-5 w-5 text-error"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <title>Error</title>
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-error">Upload failed</h3>
-              <div className="mt-2 text-sm text-error/90">
-                <p>{uploadState.error}</p>
-              </div>
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={resetUploadState}
-                  className="bg-error/10 hover:bg-error/20 px-3 py-2 text-sm font-medium text-error rounded-md transition-colors cursor-pointer"
-                >
-                  Try again
+        {uploadState.error && (
+          <div className="bnd-alert bad" role="alert">
+            {BI.xcircle(18)}
+            <div>
+              <b>Upload failed</b>
+              <p>{uploadState.error}</p>
+              <div className="bnd-row-flex" style={{ marginTop: 10 }}>
+                <button type="button" className="btn sm ghost" onClick={resetUploadState}>
+                  {BI.retry(13)} Try again
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Action buttons */}
-      <div className="flex flex-col sm:flex-row justify-between gap-4 sm:gap-0">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="inline-flex items-center justify-center px-4 py-2 border border-border shadow-sm text-sm font-medium rounded-md text-foreground bg-background hover:bg-surface focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background transition-colors cursor-pointer"
-        >
+      <div className="bnd-card-f" style={{ justifyContent: 'space-between' }}>
+        <button type="button" className="btn ghost" onClick={() => router.back()}>
           Cancel
         </button>
         <button
           type="button"
+          className="btn"
           onClick={handleUpload}
-          disabled={
-            !selectedFile || !title.trim() || uploadState.isUploading || uploadState.success
-          }
-          className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+          disabled={!selectedFile || titleMissing || uploadState.isUploading || uploadState.success}
         >
-          {uploadState.isUploading ? 'Uploading...' : 'Upload Document'}
+          {uploadState.isUploading ? (
+            <>
+              <span className="bnd-spin" /> Uploading…
+            </>
+          ) : (
+            <>{BI.upload(15)} Upload document</>
+          )}
         </button>
       </div>
     </div>
