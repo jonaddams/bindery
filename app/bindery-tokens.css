@@ -58,3 +58,10 @@
 :root.dark{color-scheme:dark}
 @media (prefers-color-scheme: dark){:root:not(.light){color-scheme:dark}}
 .bnd input[type="radio"],.bnd input[type="checkbox"]{accent-color:var(--bnd-hi)}
+
+/* The design clips .bnd-list with overflow:hidden to keep the header and hovered
+   rows inside its rounded corners, which also clips each row's actions menu.
+   Round the end children instead and let the menu escape. */
+.bnd .bnd-list{overflow:visible}
+.bnd .bnd-list>:first-child{border-top-left-radius:calc(var(--r-3) - 1px);border-top-right-radius:calc(var(--r-3) - 1px)}
+.bnd .bnd-list>:last-child{border-bottom-left-radius:calc(var(--r-3) - 1px);border-bottom-right-radius:calc(var(--r-3) - 1px)}
