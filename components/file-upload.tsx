@@ -4,6 +4,7 @@ import { upload } from '@vercel/blob/client';
 import { useRouter } from 'next/navigation';
 import { useCallback, useId, useState } from 'react';
 import { BI } from '@/components/bindery/icons';
+import { OCR_LANGUAGE_LABELS, OCR_LANGUAGES, type OcrLanguage } from '@/lib/operations/ocr';
 import { stagedUploadPathname } from '@/lib/staged-upload';
 
 type UploadState = {
@@ -23,6 +24,14 @@ const describeFailedResponse = async (response: Response): Promise<string> => {
 
 const WORD_EXTENSIONS = new Set(['doc', 'docx']);
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'tif', 'tiff', 'webp']);
+
+/**
+ * OCR is offered for PDFs and images only — Office files are text already. It is
+ * pre-ticked for an image, which never has a text layer; a PDF is checked on the
+ * server instead (lib/scan-detection.ts), and the document page offers OCR then.
+ */
+const offersOcr = (file: File): boolean =>
+  file.type === 'application/pdf' || file.type.startsWith('image/');
 
 const fileIconVariant = (extension: string): string => {
   if (WORD_EXTENSIONS.has(extension)) return 'docx';
@@ -46,6 +55,10 @@ export function FileUpload({ uploaderId }: { uploaderId: string }) {
   const [dragOver, setDragOver] = useState(false);
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
+  const [ocrWanted, setOcrWanted] = useState(false);
+  const [ocrLanguage, setOcrLanguage] = useState<OcrLanguage>('english');
+  const ocrCheckboxId = useId();
+  const ocrLanguageId = useId();
 
   const resetUploadState = useCallback(() => {
     setUploadState({
@@ -60,6 +73,7 @@ export function FileUpload({ uploaderId }: { uploaderId: string }) {
       setSelectedFile(file);
       setTitle(file.name.replace(/\.[^/.]+$/, '')); // Use filename without extension as default title
       setAuthor('');
+      setOcrWanted(file.type.startsWith('image/'));
       resetUploadState();
     },
     [resetUploadState]
@@ -116,7 +130,13 @@ export function FileUpload({ uploaderId }: { uploaderId: string }) {
         const response = await fetch('/api/documents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pathname: staged.pathname, filename: file.name, title, author }),
+          body: JSON.stringify({
+            pathname: staged.pathname,
+            filename: file.name,
+            title,
+            author,
+            ...(ocrWanted && offersOcr(file) ? { ocrLanguage } : {}),
+          }),
         });
 
         if (!response.ok) {
@@ -143,7 +163,7 @@ export function FileUpload({ uploaderId }: { uploaderId: string }) {
         });
       }
     },
-    [router, title, author, uploaderId]
+    [router, title, author, uploaderId, ocrWanted, ocrLanguage]
   );
 
   const handleUpload = useCallback(() => {
@@ -272,6 +292,50 @@ export function FileUpload({ uploaderId }: { uploaderId: string }) {
                 disabled={uploadState.isUploading}
               />
             </div>
+            {selectedFile && offersOcr(selectedFile) && (
+              <div className="bnd-field">
+                <label htmlFor={ocrCheckboxId} className="bnd-check">
+                  <input
+                    id={ocrCheckboxId}
+                    type="checkbox"
+                    checked={ocrWanted}
+                    onChange={(event) => setOcrWanted(event.target.checked)}
+                    disabled={uploadState.isUploading}
+                  />
+                  <span>
+                    Make searchable (OCR)
+                    <span className="bnd-hint" style={{ display: 'block' }}>
+                      Adds a searchable copy once the upload finishes. The original is kept.
+                    </span>
+                  </span>
+                </label>
+                {ocrWanted && (
+                  <>
+                    <label htmlFor={ocrLanguageId} className="bnd-lbl">
+                      OCR language
+                    </label>
+                    <select
+                      id={ocrLanguageId}
+                      className="bnd-input"
+                      value={ocrLanguage}
+                      onChange={(event) => {
+                        const chosen = OCR_LANGUAGES.find(
+                          (language) => language === event.target.value
+                        );
+                        if (chosen) setOcrLanguage(chosen);
+                      }}
+                      disabled={uploadState.isUploading}
+                    >
+                      {OCR_LANGUAGES.map((language) => (
+                        <option key={language} value={language}>
+                          {OCR_LANGUAGE_LABELS[language]}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </div>
+            )}
           </>
         )}
 
