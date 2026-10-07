@@ -4,16 +4,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requireAuth = vi.fn();
 const createDocument = vi.fn();
+const findManyDocuments = vi.fn();
 const uploadDocument = vi.fn();
 const getBlob = vi.fn();
 const deleteBlob = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   requireAuth: (...a: unknown[]) => requireAuth(...a),
-  getEffectiveDocumentFilter: vi.fn(),
+  getEffectiveDocumentFilter: () => ({}),
 }));
 vi.mock('@/lib/prisma', () => ({
-  prisma: { document: { create: (...a: unknown[]) => createDocument(...a) } },
+  prisma: {
+    document: {
+      create: (...a: unknown[]) => createDocument(...a),
+      findMany: (...a: unknown[]) => findManyDocuments(...a),
+    },
+  },
 }));
 vi.mock('@/lib/document-provider', () => ({
   documentProvider: () => ({ uploadDocument: (...a: unknown[]) => uploadDocument(...a) }),
@@ -38,7 +44,7 @@ vi.mock('@/lib/job-runner', () => ({
   jobRunner: () => ({ enqueue: (...a: unknown[]) => enqueue(...a) }),
 }));
 
-const { POST } = await import('@/app/api/documents/route');
+const { GET, POST } = await import('@/app/api/documents/route');
 
 const OWN_STAGED_PATHNAME = 'uploads/user_jon/Invoice Lumen-a1b2.pdf';
 
@@ -237,5 +243,19 @@ describe('Uploading a document staged in Blob storage', () => {
     const response = await post(anUpload());
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe('Listing documents', () => {
+  // The list groups each processed copy under the document it was made from,
+  // which it can only do if it is told what that was.
+  it('says what each document was made from', async () => {
+    findManyDocuments.mockResolvedValue([]);
+
+    await GET(new Request('https://example.test/api/documents') as never);
+
+    expect(findManyDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ derivedFromId: true }) })
+    );
   });
 });

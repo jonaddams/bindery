@@ -83,6 +83,8 @@ export async function GET(request: NextRequest) {
         fileSize: true,
         author: true,
         ownerId: true,
+        // The list nests each processed copy under what it was made from.
+        derivedFromId: true,
         createdAt: true,
         updatedAt: true,
         owner: {

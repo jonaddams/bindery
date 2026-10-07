@@ -63,6 +63,80 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('Grouping processed copies with their original', () => {
+  const at = (minutes: number) => new Date(Date.UTC(2026, 9, 7, 12, minutes)).toISOString();
+
+  beforeEach(() => {
+    documents = [
+      aDocument({ id: 'doc_1', title: 'Q3 Contract', createdAt: at(0) }),
+      aDocument({
+        id: 'doc_2',
+        title: 'Board Minutes',
+        filename: 'minutes.pdf',
+        createdAt: at(10),
+      }),
+      aDocument({
+        id: 'doc_3',
+        title: 'Q3 Contract (compressed)',
+        filename: 'q3-contract-compressed.pdf',
+        derivedFromId: 'doc_1',
+        createdAt: at(20),
+      }),
+      aDocument({
+        id: 'doc_4',
+        title: 'Q3 Contract (compressed) (protected)',
+        filename: 'q3-contract-compressed-protected.pdf',
+        derivedFromId: 'doc_3',
+        createdAt: at(30),
+      }),
+    ];
+  });
+
+  const titlesInOrder = () =>
+    screen
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('href')?.startsWith('/documents/'))
+      .map((link) => link.textContent);
+
+  it('folds copies under their original until asked to show them', async () => {
+    render(<DocumentList />);
+
+    await screen.findByText('Q3 Contract');
+    expect(screen.queryByText('Q3 Contract (compressed)')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /3 versions/i }));
+
+    expect(screen.getByText('Q3 Contract (compressed)')).toBeVisible();
+    expect(screen.getByText('Q3 Contract (compressed) (protected)')).toBeVisible();
+  });
+
+  // A copy of a copy belongs with the first document, not with its parent alone.
+  it('follows a chain of copies back to the first document', async () => {
+    render(<DocumentList />);
+
+    expect(await screen.findByRole('button', { name: /3 versions/i })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+  });
+
+  it('puts the document with the newest work first', async () => {
+    render(<DocumentList />);
+    await screen.findByText('Q3 Contract');
+
+    expect(titlesInOrder()).toEqual(['Q3 Contract', 'Board Minutes']);
+  });
+
+  it('shows a copy on its own when its original is not in the list', async () => {
+    render(<DocumentList />);
+    await screen.findByText('Q3 Contract');
+
+    await userEvent.type(screen.getByPlaceholderText(/search/i), 'protected');
+
+    expect(screen.getByText('Q3 Contract (compressed) (protected)')).toBeVisible();
+  });
+});
+
 const openActions = async (title: string) => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole('button', { name: `Actions for ${title}` }));
