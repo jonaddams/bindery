@@ -9,6 +9,7 @@ import { RoleSwitcher } from '@/components/role-switcher';
 import { SignOutButton } from '@/components/sign-out-button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import type { SessionUser } from '@/lib/auth';
+import { onUnreadMentions } from '@/lib/unread-mentions';
 
 export type FrameSection = 'dashboard' | 'inbox' | 'settings' | 'upload' | 'document';
 
@@ -58,8 +59,11 @@ const useUnreadMentions = (): number => {
       })
       // A missing badge is the right failure for a secondary count.
       .catch(() => undefined);
+    // The feed announces the new count when mentions are marked read.
+    const stopListening = onUnreadMentions(setUnread);
     return () => {
       cancelled = true;
+      stopListening();
     };
   }, []);
 
