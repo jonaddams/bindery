@@ -1601,6 +1601,49 @@ example without running it.
     drawing over them, so a real removal *adds* structure. Output roughly equal
     to input would suggest the text had merely been covered.
 
+## Ten document operations — what the second batch taught
+
+Added 2026-10-07: PDF/UA, compress, flatten, rotate, password-protect and
+convert-to-PDF, alongside redaction, OCR, watermark and PDF/A. Every shape was
+probed and run for real on DWS **and** a local Document Engine, and outputs were
+checked with `pdfinfo`/`pdftotext`/`qpdf`:
+`docs/superpowers/specs/2026-10-07-build-api-shapes-more.md`. Then every tool was
+run again through the real UI on both backends.
+
+- **Linearization does not exist, whatever the API accepts.**
+  `output.optimize.linearize: true` validates on both backends and is ignored —
+  `qpdf --check-linearization` says "not linearized". Worse, **any `optimize`
+  block recompresses images lossily**, even with no quality set. That is why
+  Compress has no "fast web view" option. Do not add one without re-probing.
+- **A protected copy cannot be downloaded without its password.** DWS answers
+  `GET /viewer/documents/{id}/pdf` with 400 "Missing the 'pspdfkit-pdf-password'
+  header". So running another tool *on* a password-protected copy fails at the
+  download step. Viewing works: the SDK prompts for the password itself and then
+  honours the permissions (view-only greys out print and hides the edit tools), on
+  both backends.
+- **Passwords are sealed in job parameters** by `lib/sealed-secret.ts`
+  (AES-256-GCM, key derived from `BETTER_AUTH_SECRET`). The runner re-parses stored
+  parameters, so the password must be stored somewhere. Rotating
+  `BETTER_AUTH_SECRET` fails only protect jobs still queued, with a reason.
+- **Stored parameters never reach the browser.** `parse` now returns the
+  normalised `parameters` to store and a `summary`; the jobs route stores the
+  former (not the raw request body) and lists jobs by `describeJob`, e.g. "Redact
+  · Email addresses". `DocumentTools` shows that `description`.
+- **What a document is offered comes from one place**: `operationsForDocument`,
+  used by the page *and* the jobs route. Convert is offered only for non-PDFs via
+  the operation's `appliesTo`.
+- **Every Build output is a PDF, so output filenames always end `.pdf`**, and the
+  provider sends the source under its real type. Both backends sniff the bytes
+  anyway — a `.docx` labelled `application/pdf` converts fine — so the old
+  hard-coded type was wrong but harmless.
+- **Three additive migrations** (`20261007160000_page_tool_kinds`,
+  `…170000_protect_kind`, `…180000_convert_kind`) must be applied to production
+  **before** anyone uses the new tools there, or Postgres rejects the enum values.
+- **`NUTRIENT_API_BASE_URL` in `.env.local` is a legacy name** whose value ends in
+  `/viewer/documents`. The app reads `NUTRIENT_BASE_URL`. A probe script that
+  trusted the legacy value posted to `/viewer/documents/build` and got a uniform
+  403 that looked exactly like the wrong key.
+
 ## `.env.production` documents by empty assignment, and that is a trap
 
 **A documented-but-unset variable arrives as `''`, never `undefined`.**

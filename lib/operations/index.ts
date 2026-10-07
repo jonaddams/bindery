@@ -1,8 +1,14 @@
 import type { DocumentJobKind } from '@prisma/client';
 import type { NutrientTarget } from '@/lib/nutrient-config';
+import { compressOperation } from '@/lib/operations/compress';
+import { convertOperation } from '@/lib/operations/convert';
+import { flattenOperation } from '@/lib/operations/flatten';
 import { ocrOperation } from '@/lib/operations/ocr';
 import { pdfaOperation } from '@/lib/operations/pdfa';
+import { pdfuaOperation } from '@/lib/operations/pdfua';
+import { protectOperation } from '@/lib/operations/protect';
 import { redactionOperation } from '@/lib/operations/redaction';
+import { rotateOperation } from '@/lib/operations/rotate';
 import type { DocumentOperation, OperationSummary } from '@/lib/operations/types';
 import { watermarkOperation } from '@/lib/operations/watermark';
 
@@ -18,15 +24,53 @@ export const DOCUMENT_OPERATIONS: readonly DocumentOperation[] = [
   redactionOperation,
   ocrOperation,
   watermarkOperation,
+  flattenOperation,
+  rotateOperation,
+  compressOperation,
   pdfaOperation,
+  pdfuaOperation,
+  protectOperation,
+  convertOperation,
 ];
 
 export const operationFor = (kind: DocumentJobKind): DocumentOperation | undefined =>
   DOCUMENT_OPERATIONS.find((operation) => operation.kind === kind);
 
+/**
+ * A job as job history should name it: "Redact · Email addresses".
+ *
+ * Parsed from the stored parameters, so it says what actually ran. Falls back to
+ * the operation's label when they no longer parse — a job written by older code
+ * should still be listed, just less specifically.
+ */
+export const describeJob = (job: { kind: DocumentJobKind; parameters: unknown }): string => {
+  const operation = operationFor(job.kind);
+
+  if (!operation) {
+    return job.kind;
+  }
+
+  const parsed = operation.parse(job.parameters);
+
+  return parsed.ok && parsed.summary ? `${operation.label} · ${parsed.summary}` : operation.label;
+};
+
 /** What this deployment can offer, which is not the same as what it implements. */
 export const operationsFor = (target: NutrientTarget): readonly DocumentOperation[] =>
   DOCUMENT_OPERATIONS.filter((operation) => operation.backends.includes(target));
+
+/**
+ * What one document is offered: the deployment's operations, less any that do
+ * not apply to its type — converting a PDF to a PDF, for one. The page and the
+ * jobs route both ask this, so the menu and what the route accepts cannot drift.
+ */
+export const operationsForDocument = (options: {
+  target: NutrientTarget;
+  fileType: string;
+}): readonly DocumentOperation[] =>
+  operationsFor(options.target).filter(
+    (operation) => !operation.appliesTo || operation.appliesTo(options.fileType)
+  );
 
 /**
  * Project an operation down to what a Client Component may hold.

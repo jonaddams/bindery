@@ -119,6 +119,8 @@ export const ocrOperation: DocumentOperation = {
     return {
       ok: true,
       outputSuffix: 'ocr',
+      summary: OCR_LANGUAGE_LABELS[language],
+      parameters: { language },
       buildInstructions: ({ filePartName }) => buildOcrInstructions({ filePartName, language }),
     };
   },

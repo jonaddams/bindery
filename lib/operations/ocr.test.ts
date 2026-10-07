@@ -27,6 +27,13 @@ describe('OCR', () => {
     expect(result.message).toContain('english');
   });
 
+  it('summarises the job by its language', () => {
+    const result = ocrOperation.parse({ kind: 'OCR', language: 'german' });
+
+    if (!result.ok) throw new Error('Expected a valid request');
+    expect(result.summary).toBe('German');
+  });
+
   it('marks its output so it cannot be mistaken for the original', () => {
     const result = ocrOperation.parse({ kind: 'OCR', language: 'english' });
 

@@ -18,7 +18,8 @@ type Job = {
   id: string;
   kind: DocumentJobKind;
   status: JobStatus;
-  parameters: Record<string, unknown>;
+  /** What the job did, worded by the server from its stored parameters. */
+  description: string;
   outputDocumentId: string | null;
   error: string | null;
   attempts: number;
@@ -63,6 +64,12 @@ const OPERATION_ICONS: Record<DocumentJobKind, (size?: number) => ReactNode> = {
   OCR: BI.ocr,
   WATERMARK: BI.watermark,
   PDFA: BI.pdfa,
+  PDFUA: BI.text,
+  COMPRESS: BI.compress,
+  FLATTEN: BI.flatten,
+  ROTATE: BI.rotate,
+  PROTECT: BI.protect,
+  CONVERT: BI.convert,
 };
 
 /** Starting values for an operation's ordinary (select/text) fields. */
@@ -241,9 +248,6 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
 
   const canSubmit = !isBusy && (!needsRegexText || regex.trim().length > 0);
 
-  const labelFor = (job: Job): string =>
-    operations.find((operation) => operation.kind === job.kind)?.label ?? job.kind;
-
   return (
     <>
       {canRunTools && (
@@ -271,6 +275,17 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
 
           {selectedOperation && (
             <div className="bnd-tform">
+              <button
+                type="button"
+                className="bnd-link"
+                style={{ alignSelf: 'flex-start', display: 'inline-flex', gap: 4 }}
+                onClick={() => {
+                  setSelectedKind(null);
+                  setMenuOpen(true);
+                }}
+              >
+                {BI.left(12)} All tools
+              </button>
               <div className="bnd-tform-h">
                 <span className="bnd-tic">{OPERATION_ICONS[selectedOperation.kind](15)}</span>
                 <div style={{ minWidth: 0 }}>
@@ -310,7 +325,9 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
                       </label>
                       <input
                         id={`field-${field.name}`}
-                        type="text"
+                        type={field.secret ? 'password' : 'text'}
+                        // A new password for a new file: not one to fill from, or save to, the browser's store.
+                        autoComplete={field.secret ? 'new-password' : undefined}
                         value={fieldValues[field.name] ?? ''}
                         onChange={(event) => setFieldValue(field.name, event.target.value)}
                         placeholder={field.placeholder}
@@ -425,7 +442,7 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
                 <span className={`bnd-dot ${STATUS_DOTS[job.status]}`} />
 
                 <div style={{ minWidth: 0 }}>
-                  <b>{labelFor(job)}</b>
+                  <b>{job.description}</b>
                   <div className="d">{STATUS_LABELS[job.status]}</div>
                   {job.status === 'FAILED' && job.error && (
                     <div className="e" style={{ overflowWrap: 'anywhere' }}>

@@ -363,12 +363,20 @@ enum NotificationChannel {
 /// discuss the redacted copy — rather than standing alone as a bolted-on
 /// feature, and because it is the operation where "never mutate the input" is a
 /// requirement rather than a preference. OCR, watermark and PDF/A conversion
-/// followed once the Processor API's shapes for each were verified.
+/// followed once the Processor API's shapes for each were verified, and PDF/UA,
+/// compress, flatten and rotate after them
+/// (docs/superpowers/specs/2026-10-07-build-api-shapes-more.md).
 enum DocumentJobKind {
   REDACTION
   OCR
   WATERMARK
   PDFA
+  PDFUA
+  COMPRESS
+  FLATTEN
+  ROTATE
+  PROTECT
+  CONVERT
 }
 
 /// Where a job has got to.

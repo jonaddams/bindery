@@ -1,4 +1,4 @@
-import type { DocumentJobKind } from '@prisma/client';
+import type { DocumentJobKind, Prisma } from '@prisma/client';
 import type { ProcessInstructions } from '@/lib/document-provider';
 import type { NutrientTarget } from '@/lib/nutrient-config';
 
@@ -19,7 +19,15 @@ export type OperationField =
       options: readonly OperationFieldOption[];
       defaultValue: string;
     }
-  | { kind: 'text'; name: string; label: string; placeholder: string; maxLength: number }
+  | {
+      kind: 'text';
+      name: string;
+      label: string;
+      placeholder: string;
+      maxLength: number;
+      /** Rendered as a password input: typed, never shown. */
+      secret?: boolean;
+    }
   /**
    * Redaction's preset-dropdown-plus-custom-regex form, which does not fit a
    * flat field list. Named as an exception rather than contorting the schema for
@@ -41,6 +49,17 @@ export type OperationParseResult =
       buildInstructions: (options: { filePartName: string }) => ProcessInstructions;
       /** Appended to the source filename to name the output. */
       outputSuffix: string;
+      /**
+       * What this job does, for job history: "Email addresses", "German",
+       * "PDF/A-2b". Empty when the operation has no options worth naming.
+       */
+      summary: string;
+      /**
+       * What to store for the job, which the runner later parses again to run it.
+       * Only the fields the operation reads — never the raw request body — and
+       * with anything secret sealed, since it lands in Postgres.
+       */
+      parameters: Prisma.InputJsonObject;
     }
   | { ok: false; message: string };
 
@@ -51,6 +70,11 @@ export type DocumentOperation = {
   /** Which backends can perform this. Lives here so there is no parallel list to drift. */
   backends: readonly NutrientTarget[];
   fields: readonly OperationField[];
+  /**
+   * Whether this operation makes sense for a document of this type. Omitted
+   * means every document. Server-side only, like `parse`.
+   */
+  appliesTo?: (fileType: string) => boolean;
   parse(raw: unknown): OperationParseResult;
 };
 

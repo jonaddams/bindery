@@ -228,6 +228,58 @@ const { privateKey: enginePrivateKey, publicKey: enginePublicKey } = generateKey
   publicKeyEncoding: { type: 'spki', format: 'pem' },
 });
 
+describe.each([
+  ['dws', { NUTRIENT_PROCESSOR_API_KEY: 'processor-key' }],
+  [
+    'document-engine',
+    {
+      NUTRIENT_BASE_URL: 'http://localhost:5001',
+      DOCUMENT_ENGINE_API_TOKEN: 'engine-token',
+    },
+  ],
+] as const)('processing a document on %s', (target, env) => {
+  beforeEach(() => {
+    vi.stubEnv('NUTRIENT_TARGET', target);
+    for (const [name, value] of Object.entries(env)) {
+      vi.stubEnv(name, value);
+    }
+  });
+
+  const sentPart = (fetchMock: ReturnType<typeof vi.fn>) => {
+    const body = lastCall(fetchMock)?.[1]?.body;
+    return body instanceof FormData ? body.get('document') : null;
+  };
+
+  const docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  it('sends the source under its own type, so an Office file is converted as one', async () => {
+    const fetchMock = mockFetch(new Response(new Uint8Array([1])));
+
+    await documentProvider().processDocument({
+      source: new Uint8Array([1]),
+      filename: 'report.docx',
+      contentType: docx,
+      instructions: { parts: [{ file: 'document' }], actions: [] },
+    });
+
+    const part = sentPart(fetchMock);
+    expect(part instanceof File && part.type).toBe(docx);
+  });
+
+  it('sends a PDF when the caller names no type', async () => {
+    const fetchMock = mockFetch(new Response(new Uint8Array([1])));
+
+    await documentProvider().processDocument({
+      source: new Uint8Array([1]),
+      filename: 'report.pdf',
+      instructions: { parts: [{ file: 'document' }], actions: [] },
+    });
+
+    const part = sentPart(fetchMock);
+    expect(part instanceof File && part.type).toBe('application/pdf');
+  });
+});
+
 describe('the Document Engine backend', () => {
   beforeEach(() => {
     vi.stubEnv('NUTRIENT_TARGET', 'document-engine');

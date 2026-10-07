@@ -159,6 +159,32 @@ describe('running a redaction job', () => {
   });
 });
 
+describe('running a job on a document that is not a PDF', () => {
+  const docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  beforeEach(() => {
+    findUniqueDocument.mockResolvedValue(
+      aDocument({ filename: 'board-minutes.docx', fileType: docx })
+    );
+  });
+
+  it('hands the processor the file under its own type', async () => {
+    await runJob({ jobId: 'job_1' });
+
+    expect(processDocument.mock.calls[0][0].contentType).toBe(docx);
+  });
+
+  // Every Build output here is a PDF, so keeping the source's extension would
+  // store PDF bytes under a .docx name.
+  it('names the result as the PDF it is', async () => {
+    await runJob({ jobId: 'job_1' });
+
+    const { data } = createDocument.mock.calls[0][0];
+    expect(data.filename).toBe('board-minutes-redacted.pdf');
+    expect(uploadDocument.mock.calls[0][0].file.name).toBe('board-minutes-redacted.pdf');
+  });
+});
+
 describe('when a job cannot be run', () => {
   it('does nothing at all if another runner already claimed it', async () => {
     claimJob.mockResolvedValue(undefined);

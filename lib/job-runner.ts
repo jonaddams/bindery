@@ -56,14 +56,15 @@ const FILE_PART_NAME = 'document';
  */
 const suffixedTitle = (title: string, suffix: string): string => `${title} (${suffix})`;
 
+/**
+ * Always `.pdf`: every Build output is a PDF, so a converted or processed .docx
+ * keeping its own extension would store PDF bytes under a Word name.
+ */
 const suffixedFilename = (filename: string, suffix: string): string => {
   const extension = filename.lastIndexOf('.');
+  const stem = extension <= 0 ? filename : filename.slice(0, extension);
 
-  if (extension <= 0) {
-    return `${filename}-${suffix}`;
-  }
-
-  return `${filename.slice(0, extension)}-${suffix}${filename.slice(extension)}`;
+  return `${stem}-${suffix}.pdf`;
 };
 
 const describe = (error: unknown): string =>
@@ -148,6 +149,7 @@ const performJob = async (job: ClaimedJob): Promise<void> => {
   const processed = await provider.processDocument({
     source: new Uint8Array(source),
     filename: document.filename,
+    contentType: document.fileType,
     instructions: request.buildInstructions({ filePartName: FILE_PART_NAME }),
   });
 

@@ -6,7 +6,33 @@ import {
   parseRedactionRequest,
   REDACTION_PRESET_LABELS,
   REDACTION_PRESETS,
+  redactionOperation,
 } from '@/lib/operations/redaction';
+
+// Job history used to say "Redact" for every redaction, losing what was removed.
+describe('Summarising a redaction for job history', () => {
+  const summaryOf = (request: unknown): string => {
+    const result = redactionOperation.parse(request);
+    if (!result.ok) throw new Error(result.message);
+    return result.summary;
+  };
+
+  it('names the preset it removed', () => {
+    expect(summaryOf({ strategy: 'preset', preset: 'social-security-number' })).toBe(
+      'Social security numbers'
+    );
+  });
+
+  it('shows the pattern it searched for', () => {
+    expect(summaryOf({ strategy: 'regex', regex: 'INV-\\d+' })).toBe('Pattern /INV-\\d+/');
+  });
+
+  it('says when the pattern was case-sensitive', () => {
+    expect(summaryOf({ strategy: 'regex', regex: 'Acme', caseSensitive: true })).toBe(
+      'Pattern /Acme/ (case-sensitive)'
+    );
+  });
+});
 
 describe('Describing a redaction to the Processor API', () => {
   it('redacts a preset pattern across the whole document', () => {

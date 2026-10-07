@@ -2,7 +2,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentTools } from '@/components/document-tools';
+import { toOperationSummary } from '@/lib/operations';
 import { ocrOperation } from '@/lib/operations/ocr';
+import { protectOperation } from '@/lib/operations/protect';
 import { redactionOperation } from '@/lib/operations/redaction';
 
 const operations = [redactionOperation, ocrOperation];
@@ -13,7 +15,7 @@ type Job = {
   id: string;
   kind: string;
   status: string;
-  parameters: Record<string, unknown>;
+  description: string;
   outputDocumentId: string | null;
   error: string | null;
   attempts: number;
@@ -29,7 +31,7 @@ const aJob = (overrides: Partial<Job> = {}): Job => ({
   id: 'job_1',
   kind: 'REDACTION',
   status: 'PENDING',
-  parameters: { strategy: 'preset', preset: 'social-security-number' },
+  description: 'Redact · Social security numbers',
   outputDocumentId: null,
   error: null,
   attempts: 0,
@@ -100,6 +102,40 @@ describe('The tools menu', () => {
 
     const posted = localFetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
     expect(JSON.parse(String(posted?.[1]?.body))).toEqual(expect.objectContaining({ kind: 'OCR' }));
+  });
+});
+
+describe('Moving between tools', () => {
+  // With ten tools, being stuck on one form until the menu is closed and
+  // reopened was found by using the page, not by a test.
+  it('goes back from a chosen tool to the whole list', async () => {
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /tools/i }));
+    await userEvent.click(screen.getByText('OCR'));
+    expect(screen.queryByText('Redact')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'All tools' }));
+
+    expect(screen.getByText('Redact')).toBeVisible();
+    expect(screen.getByText('OCR')).toBeVisible();
+  });
+});
+
+describe('Password-protecting through the tools menu', () => {
+  it('takes the password in a password box, so it is never shown on screen', async () => {
+    render(
+      <DocumentTools
+        documentId="doc_1"
+        canRunTools
+        operations={[toOperationSummary(protectOperation)]}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /tools/i }));
+    await userEvent.click(screen.getByText('Password-protect'));
+
+    expect(screen.getByLabelText('Password to open')).toHaveAttribute('type', 'password');
   });
 });
 
@@ -231,18 +267,17 @@ describe('Watching a job run', () => {
     expect(await screen.findByText(/out of credits/i)).toBeVisible();
   });
 
-  it('labels each job using the operation registry, not an assumption of redaction', async () => {
-    jobs = [aJob({ kind: 'OCR', status: 'SUCCEEDED', outputDocumentId: 'doc_2' })];
+  // Job history used to say "Redact" for every redaction. The server describes
+  // each job from what it stored, so history says what was actually done.
+  it('names what each job did, as the server describes it', async () => {
+    jobs = [
+      aJob({ kind: 'OCR', status: 'SUCCEEDED', description: 'OCR · German' }),
+      aJob({ id: 'job_2', status: 'SUCCEEDED', description: 'Redact · Email addresses' }),
+    ];
     render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
 
-    expect(await screen.findByText('OCR')).toBeVisible();
-  });
-
-  it('falls back to the raw kind when no operation in the registry names it', async () => {
-    jobs = [aJob({ kind: 'SOME_FUTURE_KIND', status: 'SUCCEEDED' })];
-    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
-
-    expect(await screen.findByText('SOME_FUTURE_KIND')).toBeVisible();
+    expect(await screen.findByText('OCR · German')).toBeVisible();
+    expect(screen.getByText('Redact · Email addresses')).toBeVisible();
   });
 
   it('says so when nothing has been done yet', async () => {
@@ -257,7 +292,7 @@ describe('Someone who may only read the document', () => {
     jobs = [aJob({ status: 'SUCCEEDED', outputDocumentId: 'doc_2' })];
     render(<DocumentTools documentId="doc_1" canRunTools={false} operations={operations} />);
 
-    await screen.findByText('Redact');
+    await screen.findByText('Redact · Social security numbers');
     expect(screen.queryByRole('button', { name: /tools/i })).not.toBeInTheDocument();
   });
 

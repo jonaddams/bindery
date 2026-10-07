@@ -218,9 +218,16 @@ export const redactionOperation: DocumentOperation = {
       return { ok: false, message: request.message };
     }
 
+    const { redaction } = request;
+
     return {
       ok: true,
       outputSuffix: 'redacted',
+      summary:
+        redaction.strategy === 'preset'
+          ? REDACTION_PRESET_LABELS[redaction.preset]
+          : `Pattern /${redaction.regex}/${redaction.caseSensitive ? ' (case-sensitive)' : ''}`,
+      parameters: redaction,
       buildInstructions: ({ filePartName }) =>
         buildRedactionInstructions({ filePartName, redaction: request.redaction }),
     };

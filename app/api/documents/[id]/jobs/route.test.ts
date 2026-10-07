@@ -99,6 +99,32 @@ describe('Queueing a redaction', () => {
     );
   });
 
+  it('refuses a tool the document is not offered, such as converting a PDF to PDF', async () => {
+    findFirstDocument.mockResolvedValue({ id: 'doc_1', fileType: 'application/pdf' });
+
+    const response = await post({ kind: 'CONVERT' });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/not offered for this document/);
+    expect(createDocumentJob).not.toHaveBeenCalled();
+  });
+
+  it('accepts conversion for a document that is not a PDF', async () => {
+    findFirstDocument.mockResolvedValue({ id: 'doc_1', fileType: 'image/png' });
+
+    expect((await post({ kind: 'CONVERT' })).status).toBe(202);
+  });
+
+  it('stores what the operation read from the request, not the raw body', async () => {
+    await post({ ...aRedaction, unrelated: 'not for the database' });
+
+    const { parameters } = createDocumentJob.mock.calls[0][0];
+    expect(parameters).toEqual(
+      expect.objectContaining({ strategy: 'preset', preset: 'social-security-number' })
+    );
+    expect(parameters).not.toHaveProperty('unrelated');
+  });
+
   // Not the read filter. A redaction does not modify its source, so the read
   // filter is tempting — but it spends the owner's credits and creates a
   // document owned by them. Someone who can only read a document because they
@@ -198,6 +224,48 @@ describe('Listing the jobs for a document', () => {
     expect(await response.json()).toEqual(
       expect.objectContaining({ jobs: [expect.objectContaining({ id: 'job_1' })] })
     );
+  });
+
+  it('describes each job by what it did, not just which tool ran', async () => {
+    findManyJobs.mockResolvedValue([
+      {
+        id: 'job_1',
+        status: 'SUCCEEDED',
+        kind: 'REDACTION',
+        parameters: { strategy: 'preset', preset: 'email-address' },
+      },
+    ]);
+
+    const { jobs } = await (await get()).json();
+
+    expect(jobs[0].description).toBe('Redact · Email addresses');
+  });
+
+  it('falls back to the tool name when stored parameters no longer parse', async () => {
+    findManyJobs.mockResolvedValue([
+      { id: 'job_1', status: 'FAILED', kind: 'REDACTION', parameters: { strategy: 'gone' } },
+    ]);
+
+    const { jobs } = await (await get()).json();
+
+    expect(jobs[0].description).toBe('Redact');
+  });
+
+  // Stored parameters can hold a sealed password; even ciphertext has no
+  // business in the browser.
+  it('does not send stored parameters to the browser', async () => {
+    findManyJobs.mockResolvedValue([
+      {
+        id: 'job_1',
+        status: 'SUCCEEDED',
+        kind: 'REDACTION',
+        parameters: { strategy: 'preset', preset: 'email-address' },
+      },
+    ]);
+
+    const { jobs } = await (await get()).json();
+
+    expect(jobs[0]).not.toHaveProperty('parameters');
   });
 
   // Reading the status of a job is not the same privilege as starting one:
