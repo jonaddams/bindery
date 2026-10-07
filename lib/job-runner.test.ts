@@ -180,6 +180,20 @@ describe('noticing whether the result is a scan', () => {
   });
 });
 
+describe('a result that came out of OCR', () => {
+  // A blank page, or a photo with no words in it, can come back from OCR still
+  // fontless. It has been made searchable all the same; offering OCR on it
+  // again would be a loop.
+  it('is never offered OCR again, even when nothing was recognised', async () => {
+    claimJob.mockResolvedValue(aJob({ kind: 'OCR', parameters: { language: 'english' } }));
+    processDocument.mockResolvedValue(new TextEncoder().encode('%PDF-1.7 /XObject /Image').buffer);
+
+    await runJob({ jobId: 'job_1' });
+
+    expect(createDocument.mock.calls[0][0].data.likelyScanned).toBe(false);
+  });
+});
+
 describe('running a job on a document that is not a PDF', () => {
   const docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 

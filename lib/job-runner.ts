@@ -176,10 +176,11 @@ const performJob = async (job: ClaimedJob): Promise<void> => {
       // result, which would hide it from the person whose document it is.
       ownerId: document.ownerId,
       derivedFromId: document.id,
-      likelyScanned: looksScanned({
-        bytes: new Uint8Array(processed),
-        fileType: 'application/pdf',
-      }),
+      // OCR's own output has been made searchable even when it recognised
+      // nothing (a blank page), so it must not offer OCR again.
+      likelyScanned:
+        job.kind !== 'OCR' &&
+        looksScanned({ bytes: new Uint8Array(processed), fileType: 'application/pdf' }),
     },
   });
 
