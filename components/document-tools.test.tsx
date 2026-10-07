@@ -105,6 +105,23 @@ describe('The tools menu', () => {
   });
 });
 
+describe('Moving between tools', () => {
+  // With ten tools, being stuck on one form until the menu is closed and
+  // reopened was found by using the page, not by a test.
+  it('goes back from a chosen tool to the whole list', async () => {
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /tools/i }));
+    await userEvent.click(screen.getByText('OCR'));
+    expect(screen.queryByText('Redact')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'All tools' }));
+
+    expect(screen.getByText('Redact')).toBeVisible();
+    expect(screen.getByText('OCR')).toBeVisible();
+  });
+});
+
 describe('Password-protecting through the tools menu', () => {
   it('takes the password in a password box, so it is never shown on screen', async () => {
     render(

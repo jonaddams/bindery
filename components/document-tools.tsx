@@ -275,6 +275,17 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
 
           {selectedOperation && (
             <div className="bnd-tform">
+              <button
+                type="button"
+                className="bnd-link"
+                style={{ alignSelf: 'flex-start', display: 'inline-flex', gap: 4 }}
+                onClick={() => {
+                  setSelectedKind(null);
+                  setMenuOpen(true);
+                }}
+              >
+                {BI.left(12)} All tools
+              </button>
               <div className="bnd-tform-h">
                 <span className="bnd-tic">{OPERATION_ICONS[selectedOperation.kind](15)}</span>
                 <div style={{ minWidth: 0 }}>
