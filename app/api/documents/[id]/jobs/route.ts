@@ -151,7 +151,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const document = await prisma.document.findFirst({
       where: { id, ...getEffectiveDocumentFilter(session.user as SessionUser) },
-      select: { id: true },
+      select: { id: true, fileSize: true },
     });
 
     if (!document) {
@@ -171,14 +171,21 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         attempts: true,
         createdAt: true,
         finishedAt: true,
+        // What the job did to the file's size: "1.7 MB → 215 KB" in Activity.
+        output: { select: { fileSize: true } },
       },
     });
 
     // Described here rather than sent as stored parameters: those can hold a
     // sealed password, and the browser needs a sentence, not a payload.
-    const described = jobs.map(({ parameters, ...job }) => ({
+    const bytes = (size: bigint | null | undefined): number | null =>
+      size === null || size === undefined ? null : Number(size);
+
+    const described = jobs.map(({ parameters, output, ...job }) => ({
       ...job,
       description: describeJob({ kind: job.kind, parameters }),
+      inputBytes: bytes(document.fileSize),
+      outputBytes: bytes(output?.fileSize),
     }));
 
     return NextResponse.json({ jobs: described });

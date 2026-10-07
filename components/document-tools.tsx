@@ -25,6 +25,28 @@ type Job = {
   attempts: number;
   createdAt: string;
   finishedAt: string | null;
+  /** The document's size, and the result's once there is one. */
+  inputBytes?: number | null;
+  outputBytes?: number | null;
+};
+
+const formatBytes = (bytes: number): string => {
+  const units = ['Bytes', 'KB', 'MB', 'GB'];
+  const power =
+    bytes > 0 ? Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1) : 0;
+  return `${Math.round((bytes / 1024 ** power) * 100) / 100} ${units[power]}`;
+};
+
+/**
+ * "1.72 MB → 214.84 KB (−88%)": what a finished job did to the file. A saving is
+ * given as a percentage; growth is not, since "+1,200%" for OCR adding a text
+ * layer would read as a warning rather than a fact.
+ */
+const sizeChange = (job: Job): string | null => {
+  if (job.status !== 'SUCCEEDED' || !job.inputBytes || !job.outputBytes) return null;
+  const change = `${formatBytes(job.inputBytes)} → ${formatBytes(job.outputBytes)}`;
+  const saved = Math.round((1 - job.outputBytes / job.inputBytes) * 100);
+  return saved >= 1 ? `${change} (\u2212${saved}%)` : change;
 };
 
 type DocumentToolsProps = {
@@ -573,6 +595,7 @@ export function DocumentTools({
                 <div style={{ minWidth: 0 }}>
                   <b>{job.description}</b>
                   <div className="d">{STATUS_LABELS[job.status]}</div>
+                  {sizeChange(job) && <div className="d">{sizeChange(job)}</div>}
                   {job.status === 'FAILED' && job.error && (
                     <div className="e" style={{ overflowWrap: 'anywhere' }}>
                       {job.error}

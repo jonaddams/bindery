@@ -21,6 +21,8 @@ type Job = {
   attempts: number;
   createdAt: string;
   finishedAt: string | null;
+  inputBytes?: number | null;
+  outputBytes?: number | null;
 };
 
 let calls: Call[] = [];
@@ -393,6 +395,37 @@ describe('Watching a job run', () => {
 
     expect(await screen.findByText('OCR · German')).toBeVisible();
     expect(screen.getByText('Redact · Email addresses')).toBeVisible();
+  });
+
+  it('shows what a finished job did to the size of the file', async () => {
+    jobs = [
+      aJob({
+        status: 'SUCCEEDED',
+        description: 'Compress · Maximum',
+        outputDocumentId: 'doc_2',
+        inputBytes: 1_800_000,
+        outputBytes: 220_000,
+      }),
+    ];
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    expect(await screen.findByText('1.72 MB → 214.84 KB (−88%)')).toBeVisible();
+  });
+
+  // Growth is reported without a percentage: "+1,200%" for OCR adding a text
+  // layer would read as a warning.
+  it('shows a larger result without a percentage', async () => {
+    jobs = [
+      aJob({
+        status: 'SUCCEEDED',
+        outputDocumentId: 'doc_2',
+        inputBytes: 100_000,
+        outputBytes: 150_000,
+      }),
+    ];
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    expect(await screen.findByText('97.66 KB → 146.48 KB')).toBeVisible();
   });
 
   it('says so when nothing has been done yet', async () => {

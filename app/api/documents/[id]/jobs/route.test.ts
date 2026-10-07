@@ -276,6 +276,26 @@ describe('Listing the jobs for a document', () => {
     expect(jobs[0].description).toBe('Redact · Email addresses');
   });
 
+  it('reports how big the document was and how big the result came out', async () => {
+    findFirstDocument.mockResolvedValue({ id: 'doc_1', fileSize: BigInt(1_800_000) });
+    findManyJobs.mockResolvedValue([
+      {
+        id: 'job_1',
+        status: 'SUCCEEDED',
+        kind: 'REDACTION',
+        parameters: { strategy: 'preset', preset: 'email-address' },
+        output: { fileSize: BigInt(220_000) },
+      },
+    ]);
+
+    const { jobs } = await (await get()).json();
+
+    expect(jobs[0]).toEqual(
+      expect.objectContaining({ inputBytes: 1_800_000, outputBytes: 220_000 })
+    );
+    expect(jobs[0]).not.toHaveProperty('output');
+  });
+
   it('falls back to the tool name when stored parameters no longer parse', async () => {
     findManyJobs.mockResolvedValue([
       { id: 'job_1', status: 'FAILED', kind: 'REDACTION', parameters: { strategy: 'gone' } },
