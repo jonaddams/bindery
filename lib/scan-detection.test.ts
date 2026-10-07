@@ -89,6 +89,24 @@ describe('Telling whether a document is a scan', () => {
     );
   });
 
+  // Uploads are untrusted. A few KB of Flate can expand to gigabytes, so each
+  // object stream is inflated only up to a cap; past it, the stream is treated
+  // as unreadable rather than expanded in full.
+  // The marker sits past 64 MB of padding: found only if the stream is expanded
+  // without limit, which is exactly what must not happen.
+  it('stops expanding a compressed stream once it is implausibly large', () => {
+    const bomb = deflateSync(
+      Buffer.concat([Buffer.alloc(64 * 1024 * 1024), Buffer.from('<< /Type /Font >>')])
+    );
+    const pdf = pdfFrom([
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [] /Count 0 >>',
+      stream('/Type /ObjStm /N 1 /First 4 /Filter /FlateDecode', bomb),
+    ]);
+
+    expect(looksScanned({ bytes: pdf, fileType: 'application/pdf' })).toBe(true);
+  });
+
   // A photo of a page has no text layer by definition.
   it('calls an image a scan', () => {
     expect(looksScanned({ bytes: new Uint8Array([0x89, 0x50]), fileType: 'image/png' })).toBe(true);

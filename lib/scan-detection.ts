@@ -30,12 +30,22 @@ export const looksScanned = (options: { bytes: Uint8Array; fileType: string }): 
 const FONT = '/Font';
 /** How far back from `stream` to look for the stream's dictionary. */
 const DICTIONARY_WINDOW = 512;
+/**
+ * Uploads are untrusted, and a few KB of Flate can expand to gigabytes. Real
+ * object streams are kilobytes to low megabytes, so expansion stops at these
+ * caps — per stream, and across the file so many small bombs cannot add up. A
+ * stream past its cap is treated as unreadable, which errs towards "scanned":
+ * at worst an OCR suggestion, never a crashed upload.
+ */
+const MAX_INFLATED_STREAM_BYTES = 8 * 1024 * 1024;
+const MAX_INFLATED_TOTAL_BYTES = 32 * 1024 * 1024;
 
 const declaresFont = (pdf: Buffer): boolean => {
   if (pdf.includes(FONT)) {
     return true;
   }
 
+  let budget = MAX_INFLATED_TOTAL_BYTES;
   let searchFrom = 0;
   for (;;) {
     const streamAt = pdf.indexOf('stream', searchFrom);
@@ -57,10 +67,17 @@ const declaresFont = (pdf: Buffer): boolean => {
     if (pdf[dataStart] === 0x0d) dataStart += 1;
     if (pdf[dataStart] === 0x0a) dataStart += 1;
 
+    if (budget <= 0) return false;
+
     try {
-      if (inflateSync(pdf.subarray(dataStart, endAt)).includes(FONT)) return true;
+      const inflated = inflateSync(pdf.subarray(dataStart, endAt), {
+        maxOutputLength: Math.min(MAX_INFLATED_STREAM_BYTES, budget),
+      });
+      budget -= inflated.length;
+      if (inflated.includes(FONT)) return true;
     } catch {
-      // Not Flate-encoded, or damaged: nothing readable to search.
+      // Not Flate-encoded, damaged, or over its cap: nothing readable to search.
+      budget -= MAX_INFLATED_STREAM_BYTES;
     }
   }
 };
