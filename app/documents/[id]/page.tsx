@@ -8,6 +8,7 @@ import { RailSection } from '@/components/rail-section';
 import { getDocumentWriteFilter, getEffectiveDocumentFilter, requireAuth } from '@/lib/auth';
 import { nutrientConfig } from '@/lib/nutrient-config';
 import {
+  isProtectedCopy,
   operationsForDocument,
   toOperationSummary,
   toolsUnavailableReason,
@@ -148,6 +149,15 @@ export default async function DocumentView({ params }: { params: Promise<Params>
               <span>{formatFileSize(document.fileSize)}</span>
               <span>· Uploaded by {ownerName}</span>
               <span>· {formatDay(document.createdAt)}</span>
+              {/* A protected copy is saved from the viewer, once unlocked. */}
+              {!isProtectedCopy(document) && (
+                <span>
+                  ·{' '}
+                  <a href={`/api/documents/${document.id}/download`} download>
+                    Download
+                  </a>
+                </span>
+              )}
             </div>
             {derivedFromLink && (
               <div className="bnd-derived">

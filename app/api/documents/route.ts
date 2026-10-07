@@ -85,6 +85,8 @@ export async function GET(request: NextRequest) {
         ownerId: true,
         // The list nests each processed copy under what it was made from.
         derivedFromId: true,
+        // A protected copy is not offered for download from the list.
+        producedByJob: { select: { kind: true } },
         createdAt: true,
         updatedAt: true,
         owner: {

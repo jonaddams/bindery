@@ -13,6 +13,8 @@ type DocumentWithOwner = Document & {
     name: string | null;
     email: string;
   };
+  /** The job that made this copy, if one did — a protected copy cannot be downloaded here. */
+  producedByJob?: { kind: string } | null;
 };
 
 type Scope = 'all' | 'mine' | 'shared';
@@ -159,6 +161,19 @@ function RowMenu({ document, canDelete, onDelete }: RowMenuProps) {
           <Link href={`/documents/${document.id}`} className="mi" role="menuitem">
             {BI.docs(15)} Open
           </Link>
+          {/* Not for a protected copy: the server cannot fetch it without its
+              password. Opening it in the viewer can. */}
+          {document.producedByJob?.kind !== 'PROTECT' && (
+            <a
+              href={`/api/documents/${document.id}/download`}
+              download
+              className="mi"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+            >
+              {BI.download(15)} Download
+            </a>
+          )}
           <button className="mi" type="button" role="menuitem" onClick={copyLink}>
             {BI.link(15)} Copy link
           </button>

@@ -68,10 +68,14 @@ export const operationsFor = (target: NutrientTarget): readonly DocumentOperatio
  * beats a job that fails with that header name. The original is never protected,
  * so the reason points there.
  */
+export const isProtectedCopy = (document: {
+  producedByJob: { kind: DocumentJobKind } | null;
+}): boolean => document.producedByJob?.kind === 'PROTECT';
+
 export const toolsUnavailableReason = (document: {
   producedByJob: { kind: DocumentJobKind } | null;
 }): string | null =>
-  document.producedByJob?.kind === 'PROTECT'
+  isProtectedCopy(document)
     ? 'This is a password-protected copy, so tools cannot open it. Run them on the original instead.'
     : null;
 

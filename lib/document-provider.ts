@@ -63,6 +63,20 @@ export type ProcessInstructions = {
   output?: Record<string, unknown>;
 };
 
+/** A stored document as the backend returns it: a stream, never a buffer. */
+export type StoredDocument = {
+  body: ReadableStream<Uint8Array>;
+  /** What the backend actually sent — DWS returns a PDF even for an Office upload. */
+  contentType: string | null;
+};
+
+const asStoredDocument = (response: Response): StoredDocument => {
+  if (!response.body) {
+    throw new Error('Document download returned no content.');
+  }
+  return { body: response.body, contentType: response.headers.get('Content-Type') };
+};
+
 export type DocumentProvider = {
   readonly target: NutrientTarget;
   uploadDocument(options: { file: File }): Promise<DocumentUpload>;
@@ -73,6 +87,12 @@ export type DocumentProvider = {
    * it exists — the app stores metadata, never content.
    */
   downloadDocument(options: { documentId: string }): Promise<ArrayBuffer>;
+  /**
+   * The same bytes as `downloadDocument`, as a stream to pass straight through
+   * to a browser. Vercel caps a buffered function response at 4.5 MB; streamed
+   * responses are exempt, so a download must never be buffered.
+   */
+  streamDocument(options: { documentId: string }): Promise<StoredDocument>;
   /**
    * Run a Build instruction over a file and return the finished document.
    *
@@ -188,6 +208,23 @@ const createDwsProvider = (config: NutrientConfig): DocumentProvider => {
 
   const signal = (): AbortSignal => AbortSignal.timeout(config.limits.requestTimeoutMs);
 
+  const openStored = async (documentId: string): Promise<Response> => {
+    // `/pdf` is not a guess and not documented. Probing the live API, the bare
+    // document URL and every other spelling tried — /file, /download, /content
+    // — answered 404; this one answers 200 with application/pdf. For an Office
+    // upload it answers with a PDF rendering, not the original file.
+    const response = await fetch(`${documentsUrl}/${documentId}/pdf`, {
+      headers: { Authorization: authorization() },
+      signal: signal(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Document download failed: ${response.status} - ${await response.text()}`);
+    }
+
+    return response;
+  };
+
   const createViewerSession = async (options: {
     documentId: string;
     userId?: string;
@@ -285,19 +322,11 @@ const createDwsProvider = (config: NutrientConfig): DocumentProvider => {
     createViewerSession,
 
     async downloadDocument(options: { documentId: string }): Promise<ArrayBuffer> {
-      // `/pdf` is not a guess and not documented. Probing the live API, the bare
-      // document URL and every other spelling tried — /file, /download, /content
-      // — answered 404; this one answers 200 with application/pdf.
-      const response = await fetch(`${documentsUrl}/${options.documentId}/pdf`, {
-        headers: { Authorization: authorization() },
-        signal: signal(),
-      });
+      return (await openStored(options.documentId)).arrayBuffer();
+    },
 
-      if (!response.ok) {
-        throw new Error(`Document download failed: ${response.status} - ${await response.text()}`);
-      }
-
-      return response.arrayBuffer();
+    async streamDocument(options: { documentId: string }): Promise<StoredDocument> {
+      return asStoredDocument(await openStored(options.documentId));
     },
 
     async processDocument(options: {
@@ -413,6 +442,22 @@ const createDocumentEngineProvider = (config: NutrientConfig): DocumentProvider 
 
   const signal = (): AbortSignal => AbortSignal.timeout(config.limits.requestTimeoutMs);
 
+  const openStored = async (documentId: string): Promise<Response> => {
+    // `source=true` matters: without it the engine returns a *rendered* PDF,
+    // a few hundred bytes larger than what was uploaded. A processing job must
+    // act on the original, not on a re-render of it.
+    const response = await fetch(`${documentsUrl}/${documentId}/pdf?source=true`, {
+      headers: { Authorization: authorization },
+      signal: signal(),
+    });
+
+    if (!response.ok) {
+      throw new Error(await describeEngineFailure(response, 'Document download'));
+    }
+
+    return response;
+  };
+
   /**
    * Sign a viewer session locally.
    *
@@ -484,19 +529,11 @@ const createDocumentEngineProvider = (config: NutrientConfig): DocumentProvider 
     },
 
     async downloadDocument(options: { documentId: string }): Promise<ArrayBuffer> {
-      // `source=true` matters: without it the engine returns a *rendered* PDF,
-      // a few hundred bytes larger than what was uploaded. A processing job must
-      // act on the original, not on a re-render of it.
-      const response = await fetch(`${documentsUrl}/${options.documentId}/pdf?source=true`, {
-        headers: { Authorization: authorization },
-        signal: signal(),
-      });
+      return (await openStored(options.documentId)).arrayBuffer();
+    },
 
-      if (!response.ok) {
-        throw new Error(await describeEngineFailure(response, 'Document download'));
-      }
-
-      return response.arrayBuffer();
+    async streamDocument(options: { documentId: string }): Promise<StoredDocument> {
+      return asStoredDocument(await openStored(options.documentId));
     },
 
     async processDocument(options: {
