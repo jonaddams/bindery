@@ -19,7 +19,15 @@ export type OperationField =
       options: readonly OperationFieldOption[];
       defaultValue: string;
     }
-  | { kind: 'text'; name: string; label: string; placeholder: string; maxLength: number }
+  | {
+      kind: 'text';
+      name: string;
+      label: string;
+      placeholder: string;
+      maxLength: number;
+      /** Rendered as a password input: typed, never shown. */
+      secret?: boolean;
+    }
   /**
    * Redaction's preset-dropdown-plus-custom-regex form, which does not fit a
    * flat field list. Named as an exception rather than contorting the schema for

@@ -5,6 +5,7 @@ import { flattenOperation } from '@/lib/operations/flatten';
 import { ocrOperation } from '@/lib/operations/ocr';
 import { pdfaOperation } from '@/lib/operations/pdfa';
 import { pdfuaOperation } from '@/lib/operations/pdfua';
+import { protectOperation } from '@/lib/operations/protect';
 import { redactionOperation } from '@/lib/operations/redaction';
 import { rotateOperation } from '@/lib/operations/rotate';
 import type { DocumentOperation, OperationSummary } from '@/lib/operations/types';
@@ -27,6 +28,7 @@ export const DOCUMENT_OPERATIONS: readonly DocumentOperation[] = [
   compressOperation,
   pdfaOperation,
   pdfuaOperation,
+  protectOperation,
 ];
 
 export const operationFor = (kind: DocumentJobKind): DocumentOperation | undefined =>

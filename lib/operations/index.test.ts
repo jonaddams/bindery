@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { DocumentJobKind } from '@prisma/client';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DOCUMENT_OPERATIONS,
   operationFor,
@@ -41,6 +41,15 @@ const assertNoFunctions = (value: unknown, path = 'root'): void => {
 };
 
 describe('The operation registry', () => {
+  // Password-protect seals its passwords while parsing, which needs a server secret.
+  beforeEach(() => {
+    vi.stubEnv('BETTER_AUTH_SECRET', 'registry-test-secret');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('has exactly one operation for every job kind the schema allows', () => {
     // A kind with no operation is a job that can be created and never run.
     const kinds = DOCUMENT_OPERATIONS.map((operation) => operation.kind).sort();

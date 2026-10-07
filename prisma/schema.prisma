@@ -375,6 +375,7 @@ enum DocumentJobKind {
   COMPRESS
   FLATTEN
   ROTATE
+  PROTECT
 }
 
 /// Where a job has got to.

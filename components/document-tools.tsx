@@ -68,6 +68,7 @@ const OPERATION_ICONS: Record<DocumentJobKind, (size?: number) => ReactNode> = {
   COMPRESS: BI.compress,
   FLATTEN: BI.flatten,
   ROTATE: BI.rotate,
+  PROTECT: BI.protect,
 };
 
 /** Starting values for an operation's ordinary (select/text) fields. */
@@ -312,7 +313,9 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
                       </label>
                       <input
                         id={`field-${field.name}`}
-                        type="text"
+                        type={field.secret ? 'password' : 'text'}
+                        // A new password for a new file: not one to fill from, or save to, the browser's store.
+                        autoComplete={field.secret ? 'new-password' : undefined}
                         value={fieldValues[field.name] ?? ''}
                         onChange={(event) => setFieldValue(field.name, event.target.value)}
                         placeholder={field.placeholder}

@@ -2,7 +2,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentTools } from '@/components/document-tools';
+import { toOperationSummary } from '@/lib/operations';
 import { ocrOperation } from '@/lib/operations/ocr';
+import { protectOperation } from '@/lib/operations/protect';
 import { redactionOperation } from '@/lib/operations/redaction';
 
 const operations = [redactionOperation, ocrOperation];
@@ -100,6 +102,23 @@ describe('The tools menu', () => {
 
     const posted = localFetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
     expect(JSON.parse(String(posted?.[1]?.body))).toEqual(expect.objectContaining({ kind: 'OCR' }));
+  });
+});
+
+describe('Password-protecting through the tools menu', () => {
+  it('takes the password in a password box, so it is never shown on screen', async () => {
+    render(
+      <DocumentTools
+        documentId="doc_1"
+        canRunTools
+        operations={[toOperationSummary(protectOperation)]}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /tools/i }));
+    await userEvent.click(screen.getByText('Password-protect'));
+
+    expect(screen.getByLabelText('Password to open')).toHaveAttribute('type', 'password');
   });
 });
 

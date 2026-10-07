@@ -13,6 +13,7 @@ import { flattenOperation } from '@/lib/operations/flatten';
 import { ocrOperation } from '@/lib/operations/ocr';
 import { PDFA_CONFORMANCE_LEVELS, pdfaOperation } from '@/lib/operations/pdfa';
 import { pdfuaOperation } from '@/lib/operations/pdfua';
+import { protectOperation } from '@/lib/operations/protect';
 import { rotateOperation } from '@/lib/operations/rotate';
 import type { DocumentOperation } from '@/lib/operations/types';
 import { watermarkOperation } from '@/lib/operations/watermark';
@@ -430,6 +431,20 @@ describe.skipIf(!engineIsRunning)('Operations against a real engine', () => {
 
     expect(annotationCount(output)).toBe(0);
     expect(await extractText(new Uint8Array(output))).toContain('ANNOTATION TEXT');
+  }, 120_000);
+
+  it('password-protect encrypts the copy', async () => {
+    process.env.BETTER_AUTH_SECRET = 'integration-test-secret';
+    const source = await samplePdf();
+    expect(inflatedText(source)).not.toMatch(/\/Encrypt\b/);
+
+    const output = await run(
+      protectOperation,
+      { password: 'open-sesame', permissions: 'print' },
+      source
+    );
+
+    expect(inflatedText(output)).toMatch(/\/Encrypt\b/);
   }, 120_000);
 
   // Measured at 718 KB → 22 KB when probing; "under half" leaves room for
