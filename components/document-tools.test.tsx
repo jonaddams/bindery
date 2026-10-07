@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentTools } from '@/components/document-tools';
@@ -102,6 +102,105 @@ describe('The tools menu', () => {
 
     const posted = localFetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
     expect(JSON.parse(String(posted?.[1]?.body))).toEqual(expect.objectContaining({ kind: 'OCR' }));
+  });
+});
+
+describe('Suggesting OCR for a scan', () => {
+  const ocrOnly = [toOperationSummary(ocrOperation)];
+
+  it('offers to make a scanned document searchable', async () => {
+    render(<DocumentTools documentId="doc_1" canRunTools operations={ocrOnly} suggestOcr />);
+
+    expect(await screen.findByText(/looks like a scan/i)).toBeVisible();
+  });
+
+  it('runs OCR in the chosen language when asked', async () => {
+    render(<DocumentTools documentId="doc_1" canRunTools operations={ocrOnly} suggestOcr />);
+
+    await userEvent.selectOptions(await screen.findByLabelText('Scan language'), 'german');
+    await userEvent.click(screen.getByRole('button', { name: 'Make searchable' }));
+
+    expect(lastPostBody()).toEqual({ kind: 'OCR', language: 'german' });
+  });
+
+  it('says why, when OCR could not be started', async () => {
+    postResponse = { ok: false, status: 400, body: { error: 'Out of processing credits.' } };
+    render(<DocumentTools documentId="doc_1" canRunTools operations={ocrOnly} suggestOcr />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Make searchable' }));
+
+    expect(await screen.findByText('Out of processing credits.')).toBeVisible();
+  });
+
+  it('stops suggesting once OCR has been run or queued', async () => {
+    jobs = [aJob({ kind: 'OCR', status: 'PENDING', description: 'OCR · English' })];
+    render(<DocumentTools documentId="doc_1" canRunTools operations={ocrOnly} suggestOcr />);
+
+    await screen.findByText('OCR · English');
+    expect(screen.queryByText(/looks like a scan/i)).not.toBeInTheDocument();
+  });
+
+  it('suggests nothing for a document that has text', async () => {
+    render(<DocumentTools documentId="doc_1" canRunTools operations={ocrOnly} />);
+
+    await screen.findByText(/no jobs/i);
+    expect(screen.queryByText(/looks like a scan/i)).not.toBeInTheDocument();
+  });
+
+  // Running OCR spends the owner's credits, so a reader is not offered it.
+  it('suggests nothing to someone who may only read the document', async () => {
+    render(
+      <DocumentTools documentId="doc_1" canRunTools={false} operations={ocrOnly} suggestOcr />
+    );
+
+    await screen.findByText(/no jobs/i);
+    expect(screen.queryByText(/looks like a scan/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('Hearing that a job finished', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('announces a job that finishes while the page is open, with a way to open the result', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    jobs = [aJob({ status: 'RUNNING', description: 'Compress · Maximum' })];
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+    await screen.findByText(/in progress/i);
+
+    jobs = [
+      aJob({ status: 'SUCCEEDED', description: 'Compress · Maximum', outputDocumentId: 'doc_9' }),
+    ];
+    await vi.advanceTimersByTimeAsync(3100);
+
+    const toast = await screen.findByRole('status');
+    expect(toast).toHaveTextContent('Compress · Maximum is ready');
+    expect(within(toast).getByRole('link', { name: 'Open' })).toHaveAttribute(
+      'href',
+      '/documents/doc_9'
+    );
+  });
+
+  it('says so when a job fails', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    jobs = [aJob({ status: 'RUNNING', description: 'OCR · German' })];
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+    await screen.findByText(/in progress/i);
+
+    jobs = [aJob({ status: 'FAILED', description: 'OCR · German', error: 'out of credits' })];
+    await vi.advanceTimersByTimeAsync(3100);
+
+    expect(await screen.findByRole('status')).toHaveTextContent('OCR · German failed');
+  });
+
+  // History is not news: only a change seen on this page is announced.
+  it('does not announce jobs that had already finished when the page opened', async () => {
+    jobs = [aJob({ status: 'SUCCEEDED', outputDocumentId: 'doc_9' })];
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    await screen.findByRole('link', { name: /open/i });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });
 

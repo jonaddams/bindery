@@ -152,6 +152,7 @@ export default async function DocumentView({ params }: { params: Promise<Params>
                 documentId={document.id}
                 canRunTools={canRunTools}
                 operations={operations}
+                suggestOcr={document.likelyScanned}
               />
 
               <RailSection title="Details">

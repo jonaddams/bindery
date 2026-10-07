@@ -159,6 +159,27 @@ describe('running a redaction job', () => {
   });
 });
 
+describe('noticing whether the result is a scan', () => {
+  it('flags a result that is still only images, such as a compressed scan', async () => {
+    processDocument.mockResolvedValue(new TextEncoder().encode('%PDF-1.7 /XObject /Image').buffer);
+
+    await runJob({ jobId: 'job_1' });
+
+    expect(createDocument.mock.calls[0][0].data.likelyScanned).toBe(true);
+  });
+
+  // OCR's own output has text, so it must not go on suggesting OCR.
+  it('does not flag a result that has text', async () => {
+    processDocument.mockResolvedValue(
+      new TextEncoder().encode('%PDF-1.7 /Font /GlyphLessFont').buffer
+    );
+
+    await runJob({ jobId: 'job_1' });
+
+    expect(createDocument.mock.calls[0][0].data.likelyScanned).toBe(false);
+  });
+});
+
 describe('running a job on a document that is not a PDF', () => {
   const docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 

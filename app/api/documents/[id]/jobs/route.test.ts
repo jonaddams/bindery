@@ -85,6 +85,27 @@ describe('Queueing a redaction', () => {
     );
   });
 
+  // The Tools panel shows the returned job at once, before any poll. Without a
+  // description its Activity row was blank for the first few seconds.
+  it('returns the job already described, as the list would describe it', async () => {
+    const response = await post(aRedaction);
+
+    expect((await response.json()).job.description).toBe('Redact · Social security numbers');
+  });
+
+  it('does not return the stored parameters, which can hold a sealed password', async () => {
+    createDocumentJob.mockResolvedValue({
+      id: 'job_1',
+      status: 'PENDING',
+      kind: 'REDACTION',
+      parameters: { strategy: 'preset', preset: 'social-security-number' },
+    });
+
+    const response = await post(aRedaction);
+
+    expect((await response.json()).job).not.toHaveProperty('parameters');
+  });
+
   it('hands the job to the runner', async () => {
     await post(aRedaction);
 
