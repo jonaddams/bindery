@@ -1644,6 +1644,45 @@ run again through the real UI on both backends.
   trusted the legacy value posted to `/viewer/documents/build` and got a uniform
   403 that looked exactly like the wrong key.
 
+## Scans, OCR at upload, version groups and job toasts
+
+Added 2026-10-07.
+
+- **`Document.likelyScanned` is decided in-process by `lib/scan-detection.ts`**:
+  an image, or a PDF that declares no font anywhere. No API call, no credits. It is
+  set at upload and for every job's output, never for OCR output (a blank page can
+  come back fontless and would otherwise be offered OCR forever). Checked against
+  39 real outputs from both backends with no misclassification.
+- **Fonts usually live inside compressed object streams**, so a raw-bytes search
+  calls most modern PDFs scans. The detector inflates only `/Type /ObjStm`
+  streams, and **caps inflation at 8 MB per stream and 32 MB per file**. Uploads
+  are untrusted and a few KB of Flate can expand to gigabytes; a background security
+  review caught the first version doing this unbounded. A test puts a font marker
+  past 64 MB of padding to prove the cap exists — a timing test did not, because
+  inflating 64 MB is fast.
+- **OCR at upload is validated before anything is uploaded** and queued after the
+  document exists. A failure to queue never fails the upload, because the document
+  is stored by then.
+- **The jobs POST returns the job already described and without `parameters`**.
+  It used to return the raw row, so a new Activity row was blank until the first
+  poll, and the row carried the sealed password.
+- **Toasts compare each job list against the statuses seen last time**, so jobs
+  already finished when the page opened are not announced. Their dismiss timers are
+  deliberately not tied to effect cleanup — polling changes `jobs` every 3 s and
+  would cancel every timer.
+- **Version groups are built client-side from `derivedFromId`**, following chains
+  to the first document and sorting groups by their newest member. The list API
+  must select `derivedFromId`; a test pins it.
+
+### Running a dev server when other projects run theirs
+
+**Never stop a dev server with `pkill -f "next dev"`.** It matches every project's
+`next dev`, and on 2026-10-07 it killed an unrelated project's server on port 3000.
+Find this checkout's server with `lsof -nP -iTCP:<port> -sTCP:LISTEN -t`, confirm
+its directory with `lsof -a -p <pid> -d cwd`, and kill that PID. Also expect `next
+dev` to move to 3001 when 3000 is taken; the session cookie still works there, as
+cookies are not port-scoped.
+
 ## `.env.production` documents by empty assignment, and that is a trap
 
 **A documented-but-unset variable arrives as `''`, never `undefined`.**
