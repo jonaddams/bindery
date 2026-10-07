@@ -69,6 +69,38 @@ describe('Choosing a file to upload', () => {
   });
 });
 
+describe('Offering OCR while uploading', () => {
+  it('leaves OCR off for a PDF, which may well have text already', async () => {
+    render(<FileUpload uploaderId="user_jon" />);
+
+    await userEvent.upload(getFileInput(), getMockFile());
+
+    expect(screen.getByLabelText(/make searchable/i)).not.toBeChecked();
+  });
+
+  // A photo of a page never has a text layer.
+  it('turns OCR on for an image', async () => {
+    render(<FileUpload uploaderId="user_jon" />);
+
+    await userEvent.upload(getFileInput(), new File(['png'], 'receipt.png', { type: 'image/png' }));
+
+    expect(screen.getByLabelText(/make searchable/i)).toBeChecked();
+  });
+
+  it('does not offer OCR for an Office document, which is text already', async () => {
+    render(<FileUpload uploaderId="user_jon" />);
+
+    await userEvent.upload(
+      getFileInput(),
+      new File(['docx'], 'minutes.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      })
+    );
+
+    expect(screen.queryByLabelText(/make searchable/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('Upload readiness', () => {
   it('cannot be submitted before a file is chosen', () => {
     render(<FileUpload uploaderId="user_jon" />);
@@ -152,6 +184,22 @@ describe('Uploading', () => {
       author: '',
     });
     expect(await screen.findByText(/upload successful/i)).toBeInTheDocument();
+  });
+
+  it('asks for OCR in the chosen language when the uploader wants the file searchable', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(Response.json({ document: { id: 'doc_1' } }, { status: 201 }));
+    render(<FileUpload uploaderId="user_jon" />);
+    await userEvent.upload(getFileInput(), getMockFile());
+
+    await userEvent.click(screen.getByLabelText(/make searchable/i));
+    await userEvent.selectOptions(screen.getByLabelText(/ocr language/i), 'german');
+    await userEvent.click(screen.getByRole('button', { name: /upload document/i }));
+
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toEqual(
+      expect.objectContaining({ ocrLanguage: 'german' })
+    );
   });
 
   it('shows the reason the server gives for refusing the document', async () => {

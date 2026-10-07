@@ -107,7 +107,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // Left for the sweeper.
     }
 
-    return NextResponse.json({ job }, { status: 202 });
+    // Shaped like a listed job: described, and without the stored parameters,
+    // which can hold a sealed password.
+    const { parameters: _stored, ...visible } = job;
+
+    return NextResponse.json(
+      {
+        job: {
+          ...visible,
+          description: describeJob({ kind: job.kind, parameters: parsed.parameters }),
+        },
+      },
+      { status: 202 }
+    );
   } catch (error) {
     if (unauthorized(error)) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });

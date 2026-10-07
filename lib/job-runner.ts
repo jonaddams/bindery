@@ -34,6 +34,7 @@ import { documentProvider } from '@/lib/document-provider';
 import { nutrientConfig } from '@/lib/nutrient-config';
 import { operationsFor } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
+import { looksScanned } from '@/lib/scan-detection';
 
 /**
  * How a job gets from "recorded" to "running".
@@ -175,6 +176,11 @@ const performJob = async (job: ClaimedJob): Promise<void> => {
       // result, which would hide it from the person whose document it is.
       ownerId: document.ownerId,
       derivedFromId: document.id,
+      // OCR's own output has been made searchable even when it recognised
+      // nothing (a blank page), so it must not offer OCR again.
+      likelyScanned:
+        job.kind !== 'OCR' &&
+        looksScanned({ bytes: new Uint8Array(processed), fileType: 'application/pdf' }),
     },
   });
 

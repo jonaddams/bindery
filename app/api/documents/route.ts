@@ -2,9 +2,13 @@ import type { Prisma } from '@prisma/client';
 import { del, get } from '@vercel/blob';
 import { type NextRequest, NextResponse } from 'next/server';
 import { getEffectiveDocumentFilter, requireAuth, type SessionUser } from '@/lib/auth';
+import { createDocumentJob } from '@/lib/document-jobs';
 import { documentProvider } from '@/lib/document-provider';
+import { jobRunner } from '@/lib/job-runner';
 import { nutrientConfig } from '@/lib/nutrient-config';
+import { ocrOperation } from '@/lib/operations/ocr';
 import { prisma } from '@/lib/prisma';
+import { looksScanned } from '@/lib/scan-detection';
 import { isOwnStagedUpload } from '@/lib/staged-upload';
 import { validateUpload } from '@/lib/upload-validation';
 import { withRetry } from '@/lib/with-retry';
@@ -79,6 +83,8 @@ export async function GET(request: NextRequest) {
         fileSize: true,
         author: true,
         ownerId: true,
+        // The list nests each processed copy under what it was made from.
+        derivedFromId: true,
         createdAt: true,
         updatedAt: true,
         owner: {
@@ -126,6 +132,25 @@ const discardStagedUpload = async (pathname: string): Promise<void> => {
 };
 
 /**
+ * Queue the OCR asked for at upload. Never fails the upload: the document is
+ * stored by now, and the Tools menu can still run OCR on it, so reporting an
+ * error here would claim nothing was stored when something was.
+ */
+const queueOcr = async (options: {
+  documentId: string;
+  requestedById: string;
+  parameters: Prisma.InputJsonObject;
+}): Promise<void> => {
+  try {
+    const job = await createDocumentJob({ ...options, kind: 'OCR' });
+    // The sweeper starts anything the inline runner did not.
+    jobRunner().enqueue({ jobId: job.id });
+  } catch (error) {
+    console.error('Could not queue OCR requested at upload', options.documentId, error);
+  }
+};
+
+/**
  * POST /api/documents
  * Upload a document the browser has already staged in Blob storage.
  * See `lib/staged-upload.ts` for why uploads are staged.
@@ -148,6 +173,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
 
+    // OCR can be asked for at upload. Validated before anything is sent, so a
+    // bad option cannot leave a stored document without the OCR it asked for.
+    const ocrLanguage = stringField(body, 'ocrLanguage');
+    const ocrRequest = ocrLanguage ? ocrOperation.parse({ language: ocrLanguage }) : undefined;
+
+    if (ocrRequest && !ocrRequest.ok) {
+      return NextResponse.json({ error: ocrRequest.message }, { status: 400 });
+    }
+
     if (!isOwnStagedUpload({ pathname, uploaderId: session.user.id })) {
       return NextResponse.json({ error: 'Upload not found' }, { status: 403 });
     }
@@ -159,9 +193,8 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const file = new File([await new Response(staged.stream).arrayBuffer()], filename, {
-        type: staged.blob.contentType,
-      });
+      const bytes = new Uint8Array(await new Response(staged.stream).arrayBuffer());
+      const file = new File([bytes], filename, { type: staged.blob.contentType });
 
       // Refuse what the backend would refuse anyway, before paying to send it.
       const validation = validateUpload({ file, limits: nutrientConfig().limits });
@@ -183,6 +216,7 @@ export async function POST(request: NextRequest) {
           fileSize: BigInt(file.size),
           author: author || session.user.name || session.user.email || 'Unknown',
           ownerId: session.user.id,
+          likelyScanned: looksScanned({ bytes, fileType: file.type }),
         },
         select: {
           id: true,
@@ -197,6 +231,14 @@ export async function POST(request: NextRequest) {
           updatedAt: true,
         },
       });
+
+      if (ocrRequest?.ok) {
+        await queueOcr({
+          documentId: document.id,
+          requestedById: session.user.id,
+          parameters: ocrRequest.parameters,
+        });
+      }
 
       // Convert BigInt to string for JSON serialization
       const serializedDocument = {

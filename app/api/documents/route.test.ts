@@ -4,16 +4,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requireAuth = vi.fn();
 const createDocument = vi.fn();
+const findManyDocuments = vi.fn();
 const uploadDocument = vi.fn();
 const getBlob = vi.fn();
 const deleteBlob = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   requireAuth: (...a: unknown[]) => requireAuth(...a),
-  getEffectiveDocumentFilter: vi.fn(),
+  getEffectiveDocumentFilter: () => ({}),
 }));
 vi.mock('@/lib/prisma', () => ({
-  prisma: { document: { create: (...a: unknown[]) => createDocument(...a) } },
+  prisma: {
+    document: {
+      create: (...a: unknown[]) => createDocument(...a),
+      findMany: (...a: unknown[]) => findManyDocuments(...a),
+    },
+  },
 }));
 vi.mock('@/lib/document-provider', () => ({
   documentProvider: () => ({ uploadDocument: (...a: unknown[]) => uploadDocument(...a) }),
@@ -28,7 +34,17 @@ vi.mock('@vercel/blob', () => ({
   del: (...a: unknown[]) => deleteBlob(...a),
 }));
 
-const { POST } = await import('@/app/api/documents/route');
+const createDocumentJob = vi.fn();
+const enqueue = vi.fn();
+
+vi.mock('@/lib/document-jobs', () => ({
+  createDocumentJob: (...a: unknown[]) => createDocumentJob(...a),
+}));
+vi.mock('@/lib/job-runner', () => ({
+  jobRunner: () => ({ enqueue: (...a: unknown[]) => enqueue(...a) }),
+}));
+
+const { GET, POST } = await import('@/app/api/documents/route');
 
 const OWN_STAGED_PATHNAME = 'uploads/user_jon/Invoice Lumen-a1b2.pdf';
 
@@ -71,6 +87,68 @@ beforeEach(() => {
     id: 'doc_1',
     ...data,
   }));
+  createDocumentJob.mockResolvedValue({ id: 'job_1', kind: 'OCR', status: 'PENDING' });
+});
+
+const storedData = () => createDocument.mock.calls[0][0].data;
+
+describe('Noticing a scan on upload', () => {
+  it('flags a PDF with no text in it, so the document can offer to make it searchable', async () => {
+    getBlob.mockResolvedValue(aStagedBlob({ bytes: '%PDF-1.7 /XObject /Image only' }));
+
+    await post(anUpload());
+
+    expect(storedData().likelyScanned).toBe(true);
+  });
+
+  it('does not flag a PDF that has text', async () => {
+    getBlob.mockResolvedValue(aStagedBlob({ bytes: '%PDF-1.7 /Font /Helvetica' }));
+
+    await post(anUpload());
+
+    expect(storedData().likelyScanned).toBe(false);
+  });
+});
+
+describe('Asking for OCR while uploading', () => {
+  it('queues OCR on the new document, in the language chosen', async () => {
+    await post(anUpload({ ocrLanguage: 'german' }));
+
+    expect(createDocumentJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc_1',
+        requestedById: 'user_jon',
+        kind: 'OCR',
+        parameters: { language: 'german' },
+      })
+    );
+    expect(enqueue).toHaveBeenCalledWith({ jobId: 'job_1' });
+  });
+
+  it('queues nothing when OCR was not asked for', async () => {
+    await post(anUpload());
+
+    expect(createDocumentJob).not.toHaveBeenCalled();
+  });
+
+  // Refused before the file is sent anywhere: a bad option must not leave an
+  // uploaded document behind with the OCR the uploader asked for silently missing.
+  it('refuses a language OCR does not offer, before uploading anything', async () => {
+    const response = await post(anUpload({ ocrLanguage: 'klingon' }));
+
+    expect(response.status).toBe(400);
+    expect(uploadDocument).not.toHaveBeenCalled();
+  });
+
+  // The document exists by then; failing the upload over the follow-up job would
+  // tell the uploader nothing was stored when something was.
+  it('still reports the upload when OCR could not be queued', async () => {
+    createDocumentJob.mockRejectedValue(new Error('database unavailable'));
+
+    const response = await post(anUpload({ ocrLanguage: 'english' }));
+
+    expect(response.status).toBe(201);
+  });
 });
 
 describe('Uploading a document staged in Blob storage', () => {
@@ -165,5 +243,19 @@ describe('Uploading a document staged in Blob storage', () => {
     const response = await post(anUpload());
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe('Listing documents', () => {
+  // The list groups each processed copy under the document it was made from,
+  // which it can only do if it is told what that was.
+  it('says what each document was made from', async () => {
+    findManyDocuments.mockResolvedValue([]);
+
+    await GET(new Request('https://example.test/api/documents') as never);
+
+    expect(findManyDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ derivedFromId: true }) })
+    );
   });
 });

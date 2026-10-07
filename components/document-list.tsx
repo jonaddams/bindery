@@ -2,7 +2,7 @@
 
 import type { Document } from '@prisma/client';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Avatar } from '@/components/bindery/avatar';
 import { BI } from '@/components/bindery/icons';
 import { useSession } from '@/lib/auth-client';
@@ -16,6 +16,54 @@ type DocumentWithOwner = Document & {
 };
 
 type Scope = 'all' | 'mine' | 'shared';
+
+type VersionGroup = { original: DocumentWithOwner; copies: DocumentWithOwner[] };
+
+const newest = (group: VersionGroup): number =>
+  Math.max(...[group.original, ...group.copies].map((d) => new Date(d.createdAt).getTime()));
+
+/**
+ * Gather each processed copy under the document it was first made from. Every
+ * tool makes a copy rather than changing the original, so without this the list
+ * fills with "(compressed)", "(protected)"… rows.
+ *
+ * A chain is followed to its first document, so a copy of a copy joins the same
+ * group. A copy whose original is not in `documents` — filtered out, or never
+ * visible to this reader — stands as a group of its own. Groups with the newest
+ * work come first, so a document that was just processed rises to the top.
+ */
+const groupVersions = (documents: readonly DocumentWithOwner[]): VersionGroup[] => {
+  const byId = new Map(documents.map((document) => [document.id, document]));
+
+  const firstOf = (document: DocumentWithOwner): DocumentWithOwner => {
+    let current = document;
+    const seen = new Set<string>();
+    while (current.derivedFromId && !seen.has(current.id)) {
+      seen.add(current.id);
+      const parent = byId.get(current.derivedFromId);
+      if (!parent) break;
+      current = parent;
+    }
+    return current;
+  };
+
+  const groups = new Map<string, VersionGroup>();
+  for (const document of documents) {
+    const original = firstOf(document);
+    const group = groups.get(original.id) ?? { original, copies: [] };
+    if (document !== original) group.copies.push(document);
+    groups.set(original.id, group);
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      copies: [...group.copies].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      ),
+    }))
+    .sort((a, b) => newest(b) - newest(a));
+};
 
 const SCOPES: ReadonlyArray<readonly [Scope, string]> = [
   ['all', 'All'],
@@ -207,6 +255,15 @@ export function DocumentList() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<Scope>('all');
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+
+  const toggleExpanded = (id: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  };
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -347,6 +404,50 @@ export function DocumentList() {
   const ownerLabel = (document: DocumentWithOwner) =>
     isMine(document) ? 'You' : document.owner.name || document.owner.email;
 
+  const renderRow = (
+    document: DocumentWithOwner,
+    options: { className?: string; expander?: ReactNode } = {}
+  ) => (
+    <div
+      key={document.id}
+      className={`bnd-lr ${options.className ?? ''}`}
+      style={{ cursor: 'default' }}
+    >
+      <div className="bnd-name">
+        <FileIcon document={document} />
+        <div className="tx">
+          <div className="t">
+            <b>
+              <Link href={`/documents/${document.id}`} style={{ color: 'inherit' }}>
+                {document.title}
+              </Link>
+            </b>
+            {options.expander}
+          </div>
+          <span className="m">
+            {formatFileSize(document.fileSize)} · {ownerLabel(document)} ·{' '}
+            {formatDate(document.createdAt)}
+          </span>
+        </div>
+      </div>
+      <span className="c">{formatFileSize(document.fileSize)}</span>
+      <span className="c who">
+        <Avatar
+          id={document.ownerId}
+          name={document.owner.name || document.owner.email}
+          size="sm"
+        />
+        {ownerLabel(document)}
+      </span>
+      <span className="c">{formatDate(document.createdAt)}</span>
+      <RowMenu
+        document={document}
+        canDelete={canDeleteDocument(document)}
+        onDelete={() => handleDeleteClick(document)}
+      />
+    </div>
+  );
+
   return (
     <>
       <div className="bnd-head">
@@ -432,41 +533,33 @@ export function DocumentList() {
                 <span>Created</span>
                 <span />
               </div>
-              {visible.map((document) => (
-                <div key={document.id} className="bnd-lr" style={{ cursor: 'default' }}>
-                  <div className="bnd-name">
-                    <FileIcon document={document} />
-                    <div className="tx">
-                      <div className="t">
-                        <b>
-                          <Link href={`/documents/${document.id}`} style={{ color: 'inherit' }}>
-                            {document.title}
-                          </Link>
-                        </b>
-                      </div>
-                      <span className="m">
-                        {formatFileSize(document.fileSize)} · {ownerLabel(document)} ·{' '}
-                        {formatDate(document.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="c">{formatFileSize(document.fileSize)}</span>
-                  <span className="c who">
-                    <Avatar
-                      id={document.ownerId}
-                      name={document.owner.name || document.owner.email}
-                      size="sm"
-                    />
-                    {ownerLabel(document)}
-                  </span>
-                  <span className="c">{formatDate(document.createdAt)}</span>
-                  <RowMenu
-                    document={document}
-                    canDelete={canDeleteDocument(document)}
-                    onDelete={() => handleDeleteClick(document)}
-                  />
-                </div>
-              ))}
+              {groupVersions(visible).flatMap(({ original, copies }) => {
+                const isOpen = expanded.has(original.id);
+                return [
+                  renderRow(original, {
+                    className: isOpen && copies.length > 0 ? 'root-open' : '',
+                    expander:
+                      copies.length > 0 ? (
+                        <button
+                          type="button"
+                          className={`bnd-exp ${isOpen ? 'open' : ''}`}
+                          aria-expanded={isOpen}
+                          onClick={() => toggleExpanded(original.id)}
+                        >
+                          {BI.right(11)}
+                          {copies.length + 1} versions
+                        </button>
+                      ) : null,
+                  }),
+                  ...(isOpen
+                    ? copies.map((copy, index) =>
+                        renderRow(copy, {
+                          className: `child ${index === copies.length - 1 ? 'last' : ''}`,
+                        })
+                      )
+                    : []),
+                ];
+              })}
             </div>
           )}
         </>

@@ -145,6 +145,11 @@ model Document {
   /// Null sorts first, so a newly uploaded document is swept before anything
   /// already seen.
   lastSweptAt      DateTime? @map("last_swept_at")
+  /// Whether the file looked like a scan — images, no text — when it was stored,
+  /// so the document page can offer OCR. Decided in-process by
+  /// lib/scan-detection.ts at upload and for every job's output. False for rows
+  /// that predate the check, which just means no suggestion is made for them.
+  likelyScanned    Boolean  @default(false) @map("likely_scanned")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

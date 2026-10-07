@@ -38,7 +38,17 @@ type DocumentToolsProps = {
   canRunTools: boolean;
   /** What this deployment offers, decided server-side by `operationsFor`. */
   operations: readonly OperationSummary[];
+  /**
+   * The document looked like a scan when it was stored (`Document.likelyScanned`),
+   * so offer to make it searchable until OCR has been run or queued.
+   */
+  suggestOcr?: boolean;
 };
+
+type Toast = { id: string; text: string; tone: 'ok' | 'bad'; href?: string };
+
+/** Long enough to read and reach for the link; short enough not to pile up. */
+const TOAST_LIFETIME_MS = 8000;
 
 /** How often to ask whether a running job has finished. */
 const POLL_INTERVAL_MS = 3000;
@@ -101,8 +111,19 @@ const defaultFieldValues = (fields: readonly OperationField[]): Record<string, s
  * unchanged from the single-purpose redaction panel this replaces — only the
  * controls are generic now.
  */
-export function DocumentTools({ documentId, canRunTools, operations }: DocumentToolsProps) {
+export function DocumentTools({
+  documentId,
+  canRunTools,
+  operations,
+  suggestOcr = false,
+}: DocumentToolsProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const ocr = operations.find((operation) => operation.kind === 'OCR');
+  const ocrLanguageField = ocr?.fields.find((field) => field.kind === 'select');
+  const [scanLanguage, setScanLanguage] = useState(
+    ocrLanguageField?.kind === 'select' ? ocrLanguageField.defaultValue : ''
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedKind, setSelectedKind] = useState<DocumentJobKind | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
@@ -154,6 +175,48 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
 
     return () => clearInterval(interval);
   }, [hasUnfinished, loadJobs]);
+
+  // Announce a job that finishes while the page is open. Compared against the
+  // statuses seen last time, so history already finished on arrival is not news.
+  const seenStatuses = useRef<Map<string, JobStatus>>(new Map());
+
+  useEffect(() => {
+    const seen = seenStatuses.current;
+    const justFinished = jobs.filter((job) => {
+      const before = seen.get(job.id);
+      return (
+        isFinished(job) && before !== undefined && before !== 'SUCCEEDED' && before !== 'FAILED'
+      );
+    });
+    seenStatuses.current = new Map(jobs.map((job) => [job.id, job.status]));
+
+    if (justFinished.length === 0) return;
+
+    const fresh: Toast[] = justFinished.map((job) =>
+      job.status === 'SUCCEEDED'
+        ? {
+            id: job.id,
+            text: `${job.description} is ready`,
+            tone: 'ok',
+            href: job.outputDocumentId ? `/documents/${job.outputDocumentId}` : undefined,
+          }
+        : { id: job.id, text: `${job.description} failed`, tone: 'bad' }
+    );
+    setToasts((current) => [...current, ...fresh]);
+
+    // Not cleared when `jobs` changes again: polling would otherwise cancel every
+    // timer and the toasts would never leave.
+    setTimeout(() => {
+      setToasts((current) => current.filter((toast) => !fresh.includes(toast)));
+    }, TOAST_LIFETIME_MS);
+  }, [jobs]);
+
+  const dismissToast = (id: string) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  };
+
+  const showScanSuggestion =
+    suggestOcr && canRunTools && ocr !== undefined && !jobs.some((job) => job.kind === 'OCR');
 
   const selectedOperation = operations.find((operation) => operation.kind === selectedKind) ?? null;
 
@@ -209,11 +272,8 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
     return body;
   };
 
-  const runOperation = async () => {
-    if (!selectedOperation) {
-      return;
-    }
-
+  /** Queue a job; true when the server accepted it. */
+  const postJob = async (body: Record<string, unknown>): Promise<boolean> => {
     setIsBusy(true);
     setError(null);
 
@@ -221,24 +281,35 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
       const response = await fetch(`/api/documents/${documentId}/jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildRequestBody(selectedOperation)),
+        body: JSON.stringify(body),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
         setError(result?.error ?? 'The job could not be started.');
-        return;
+        return false;
       }
 
       // Show it immediately rather than waiting for the next poll — the work may
       // already be running by the time the response arrives.
       setJobs((current) => [result.job as Job, ...current]);
-      setRegex('');
+      return true;
     } catch {
       setError('The job could not be started.');
+      return false;
     } finally {
       setIsBusy(false);
+    }
+  };
+
+  const runOperation = async () => {
+    if (!selectedOperation) {
+      return;
+    }
+
+    if (await postJob(buildRequestBody(selectedOperation))) {
+      setRegex('');
     }
   };
 
@@ -250,6 +321,49 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
 
   return (
     <>
+      {showScanSuggestion && (
+        <div className="bnd-alert" style={{ background: 'var(--bg-elev)' }}>
+          {BI.ocr(18)}
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div>
+              <b>This looks like a scan</b>
+              <p>Make it searchable, so its text can be found, selected and copied.</p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {ocrLanguageField?.kind === 'select' && (
+                <select
+                  aria-label="Scan language"
+                  className="bnd-input"
+                  style={{ width: 'auto', flex: 1, minWidth: 120 }}
+                  value={scanLanguage}
+                  onChange={(event) => setScanLanguage(event.target.value)}
+                >
+                  {ocrLanguageField.options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                className="btn sm"
+                disabled={isBusy}
+                onClick={() => void postJob({ kind: 'OCR', language: scanLanguage })}
+              >
+                Make searchable
+              </button>
+            </div>
+            {/* The Tools form shows its own errors; this one has no form open. */}
+            {error && !selectedOperation && (
+              <p className="bnd-hint bad" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {canRunTools && (
         <RailSection title="Tools" flush={!selectedOperation} open={isOpen} onToggle={toggleTools}>
           {menuOpen && (
@@ -461,6 +575,26 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
           </ul>
         )}
       </RailSection>
+
+      {toasts.length > 0 && (
+        <div className="bnd-toasts">
+          {toasts.map((toast) => (
+            <div key={toast.id} role="status" className="bnd-toast">
+              <span className={`bnd-dot ${toast.tone}`} />
+              <span style={{ flex: 1 }}>{toast.text}</span>
+              {toast.href && <Link href={toast.href}>Open</Link>}
+              <button
+                type="button"
+                aria-label="Dismiss"
+                onClick={() => dismissToast(toast.id)}
+                style={{ textDecoration: 'none' }}
+              >
+                {BI.x(14)}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
