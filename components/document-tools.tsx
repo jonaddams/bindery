@@ -300,12 +300,15 @@ export function DocumentTools({
   };
 
   /** Queue a job; true when the server accepted it. */
-  const postJob = async (body: Record<string, unknown>): Promise<boolean> => {
+  const postJob = async (
+    body: Record<string, unknown>,
+    url = `/api/documents/${documentId}/jobs`
+  ): Promise<boolean> => {
     setIsBusy(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/documents/${documentId}/jobs`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -582,6 +585,13 @@ export function DocumentTools({
       )}
 
       <RailSection title="Activity" count={jobs.length || undefined} flush>
+        {/* A refused retry has no form open to show its error; the banner and
+            the Tools form show their own. */}
+        {error && !selectedOperation && !showScanSuggestion && (
+          <p className="bnd-hint bad" role="alert" style={{ margin: 0, padding: '0 14px 8px' }}>
+            {error}
+          </p>
+        )}
         {jobs.length === 0 ? (
           <p className="bnd-hint" style={{ margin: 0, padding: '0 14px 8px' }}>
             No jobs yet.
@@ -606,6 +616,19 @@ export function DocumentTools({
                 <div className="r">
                   {job.status === 'SUCCEEDED' && job.outputDocumentId && (
                     <Link href={`/documents/${job.outputDocumentId}`}>Open result</Link>
+                  )}
+                  {/* A new attempt with the same settings; history keeps this one. */}
+                  {job.status === 'FAILED' && toolsOffered && (
+                    <button
+                      type="button"
+                      className="bnd-link"
+                      disabled={isBusy}
+                      onClick={() =>
+                        void postJob({}, `/api/documents/${documentId}/jobs/${job.id}/retry`)
+                      }
+                    >
+                      Retry
+                    </button>
                   )}
                 </div>
               </li>

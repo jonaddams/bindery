@@ -397,6 +397,45 @@ describe('Watching a job run', () => {
     expect(screen.getByText('Redact · Email addresses')).toBeVisible();
   });
 
+  it('retries a failed job, showing the new attempt at once', async () => {
+    jobs = [aJob({ status: 'FAILED', description: 'OCR · German', error: 'timed out' })];
+    postResponse = {
+      ok: true,
+      status: 202,
+      body: { job: aJob({ id: 'job_2', status: 'PENDING', description: 'OCR · German' }) },
+    };
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+
+    expect(calls.filter((c) => c.method === 'POST').at(-1)?.url).toBe(
+      '/api/documents/doc_1/jobs/job_1/retry'
+    );
+    expect(await screen.findByText('Queued')).toBeVisible();
+  });
+
+  it('says why, when a retry is refused', async () => {
+    jobs = [aJob({ status: 'FAILED', error: 'timed out' })];
+    postResponse = {
+      ok: false,
+      status: 400,
+      body: { error: 'The password stored for this job can no longer be read.' },
+    };
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/can no longer be read/);
+  });
+
+  it('does not offer a retry to someone who may only read the document', async () => {
+    jobs = [aJob({ status: 'FAILED', error: 'timed out' })];
+    render(<DocumentTools documentId="doc_1" canRunTools={false} operations={operations} />);
+
+    await screen.findByText('timed out');
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
+
   it('shows what a finished job did to the size of the file', async () => {
     jobs = [
       aJob({
