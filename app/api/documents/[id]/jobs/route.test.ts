@@ -130,6 +130,20 @@ describe('Queueing a redaction', () => {
     expect(createDocumentJob).not.toHaveBeenCalled();
   });
 
+  it('refuses to run anything on a password-protected copy, saying why', async () => {
+    findFirstDocument.mockResolvedValue({
+      id: 'doc_1',
+      fileType: 'application/pdf',
+      producedByJob: { kind: 'PROTECT' },
+    });
+
+    const response = await post(aRedaction);
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/password-protected/i);
+    expect(createDocumentJob).not.toHaveBeenCalled();
+  });
+
   it('accepts conversion for a document that is not a PDF', async () => {
     findFirstDocument.mockResolvedValue({ id: 'doc_1', fileType: 'image/png' });
 

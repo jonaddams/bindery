@@ -7,7 +7,11 @@ import { DocumentViewer } from '@/components/document-viewer';
 import { RailSection } from '@/components/rail-section';
 import { getDocumentWriteFilter, getEffectiveDocumentFilter, requireAuth } from '@/lib/auth';
 import { nutrientConfig } from '@/lib/nutrient-config';
-import { operationsForDocument, toOperationSummary } from '@/lib/operations';
+import {
+  operationsForDocument,
+  toOperationSummary,
+  toolsUnavailableReason,
+} from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
 
 type Params = {
@@ -53,6 +57,8 @@ export default async function DocumentView({ params }: { params: Promise<Params>
           title: true,
         },
       },
+      // A password-protected copy cannot be opened by tools or downloaded here.
+      producedByJob: { select: { kind: true } },
     },
   });
 
@@ -160,6 +166,7 @@ export default async function DocumentView({ params }: { params: Promise<Params>
               canRunTools={canRunTools}
               operations={operations}
               suggestOcr={document.likelyScanned}
+              unavailableReason={toolsUnavailableReason(document)}
             />
 
             <RailSection title="Details">

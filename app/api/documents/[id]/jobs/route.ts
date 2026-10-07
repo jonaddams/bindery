@@ -8,7 +8,12 @@ import {
 import { createDocumentJob } from '@/lib/document-jobs';
 import { jobRunner } from '@/lib/job-runner';
 import { nutrientConfig } from '@/lib/nutrient-config';
-import { describeJob, operationsFor, operationsForDocument } from '@/lib/operations';
+import {
+  describeJob,
+  operationsFor,
+  operationsForDocument,
+  toolsUnavailableReason,
+} from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -72,11 +77,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // act on it, matching the other document routes.
     const document = await prisma.document.findFirst({
       where: { id, ...getDocumentWriteFilter(session.user as SessionUser) },
-      select: { id: true, fileType: true },
+      select: { id: true, fileType: true, producedByJob: { select: { kind: true } } },
     });
 
     if (!document) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+
+    const unavailable = toolsUnavailableReason({ producedByJob: document.producedByJob ?? null });
+
+    if (unavailable) {
+      return NextResponse.json({ error: unavailable }, { status: 400 });
     }
 
     const offered = operationsForDocument({

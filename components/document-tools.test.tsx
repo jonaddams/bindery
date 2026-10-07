@@ -204,6 +204,22 @@ describe('Hearing that a job finished', () => {
   });
 });
 
+describe('A document tools cannot open', () => {
+  it('explains why instead of offering tools that would fail', async () => {
+    render(
+      <DocumentTools
+        documentId="doc_1"
+        canRunTools
+        operations={operations}
+        unavailableReason="This is a password-protected copy, so tools cannot open it."
+      />
+    );
+
+    expect(await screen.findByText(/password-protected copy/i)).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^tools/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('Moving between tools', () => {
   // With ten tools, being stuck on one form until the menu is closed and
   // reopened was found by using the page, not by a test.

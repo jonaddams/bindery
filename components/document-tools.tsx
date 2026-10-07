@@ -43,6 +43,8 @@ type DocumentToolsProps = {
    * so offer to make it searchable until OCR has been run or queued.
    */
   suggestOcr?: boolean;
+  /** Why no tool can run on this document (`toolsUnavailableReason`), shown in place of Tools. */
+  unavailableReason?: string | null;
 };
 
 type Toast = { id: string; text: string; tone: 'ok' | 'bad'; href?: string };
@@ -116,7 +118,10 @@ export function DocumentTools({
   canRunTools,
   operations,
   suggestOcr = false,
+  unavailableReason = null,
 }: DocumentToolsProps) {
+  // A document no tool can open offers neither the menu nor the OCR suggestion.
+  const toolsOffered = canRunTools && !unavailableReason;
   const [jobs, setJobs] = useState<Job[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const ocr = operations.find((operation) => operation.kind === 'OCR');
@@ -216,7 +221,7 @@ export function DocumentTools({
   };
 
   const showScanSuggestion =
-    suggestOcr && canRunTools && ocr !== undefined && !jobs.some((job) => job.kind === 'OCR');
+    suggestOcr && toolsOffered && ocr !== undefined && !jobs.some((job) => job.kind === 'OCR');
 
   const selectedOperation = operations.find((operation) => operation.kind === selectedKind) ?? null;
 
@@ -364,7 +369,17 @@ export function DocumentTools({
         </div>
       )}
 
-      {canRunTools && (
+      {canRunTools && unavailableReason && (
+        <div className="bnd-alert" style={{ background: 'var(--bg-elev)' }}>
+          {BI.lock(18)}
+          <div>
+            <b>Tools unavailable</b>
+            <p>{unavailableReason}</p>
+          </div>
+        </div>
+      )}
+
+      {toolsOffered && (
         <RailSection title="Tools" flush={!selectedOperation} open={isOpen} onToggle={toggleTools}>
           {menuOpen && (
             <ul className="bnd-tgroup" style={{ listStyle: 'none', margin: 0 }}>
