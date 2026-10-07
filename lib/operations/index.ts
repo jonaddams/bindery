@@ -1,8 +1,12 @@
 import type { DocumentJobKind } from '@prisma/client';
 import type { NutrientTarget } from '@/lib/nutrient-config';
+import { compressOperation } from '@/lib/operations/compress';
+import { flattenOperation } from '@/lib/operations/flatten';
 import { ocrOperation } from '@/lib/operations/ocr';
 import { pdfaOperation } from '@/lib/operations/pdfa';
+import { pdfuaOperation } from '@/lib/operations/pdfua';
 import { redactionOperation } from '@/lib/operations/redaction';
+import { rotateOperation } from '@/lib/operations/rotate';
 import type { DocumentOperation, OperationSummary } from '@/lib/operations/types';
 import { watermarkOperation } from '@/lib/operations/watermark';
 
@@ -18,7 +22,11 @@ export const DOCUMENT_OPERATIONS: readonly DocumentOperation[] = [
   redactionOperation,
   ocrOperation,
   watermarkOperation,
+  flattenOperation,
+  rotateOperation,
+  compressOperation,
   pdfaOperation,
+  pdfuaOperation,
 ];
 
 export const operationFor = (kind: DocumentJobKind): DocumentOperation | undefined =>

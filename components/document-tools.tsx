@@ -64,6 +64,10 @@ const OPERATION_ICONS: Record<DocumentJobKind, (size?: number) => ReactNode> = {
   OCR: BI.ocr,
   WATERMARK: BI.watermark,
   PDFA: BI.pdfa,
+  PDFUA: BI.text,
+  COMPRESS: BI.compress,
+  FLATTEN: BI.flatten,
+  ROTATE: BI.rotate,
 };
 
 /** Starting values for an operation's ordinary (select/text) fields. */
