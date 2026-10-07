@@ -29,6 +29,13 @@ describe('Watermark', () => {
     );
   });
 
+  it('summarises the job by the text it stamps', () => {
+    const result = watermarkOperation.parse({ kind: 'WATERMARK', text: 'CONFIDENTIAL' });
+
+    if (!result.ok) throw new Error(result.message);
+    expect(result.summary).toBe('“CONFIDENTIAL”');
+  });
+
   it('refuses empty text rather than stamping nothing', () => {
     const result = watermarkOperation.parse({ kind: 'WATERMARK', text: '   ' });
 

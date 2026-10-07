@@ -16,6 +16,13 @@ describe('PDF/A conversion', () => {
     expect(instructions.output).toEqual(expect.objectContaining({ conformance: level }));
   });
 
+  it('summarises the job by its conformance level', () => {
+    const result = pdfaOperation.parse({ kind: 'PDFA', conformance: 'pdfa-2b' });
+
+    if (!result.ok) throw new Error(result.message);
+    expect(result.summary).toBe('PDF/A-2b');
+  });
+
   it('names the levels it offers when given one it does not', () => {
     const result = pdfaOperation.parse({ kind: 'PDFA', conformance: 'pdfa-99z' });
 

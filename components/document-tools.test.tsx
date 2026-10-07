@@ -13,7 +13,7 @@ type Job = {
   id: string;
   kind: string;
   status: string;
-  parameters: Record<string, unknown>;
+  description: string;
   outputDocumentId: string | null;
   error: string | null;
   attempts: number;
@@ -29,7 +29,7 @@ const aJob = (overrides: Partial<Job> = {}): Job => ({
   id: 'job_1',
   kind: 'REDACTION',
   status: 'PENDING',
-  parameters: { strategy: 'preset', preset: 'social-security-number' },
+  description: 'Redact · Social security numbers',
   outputDocumentId: null,
   error: null,
   attempts: 0,
@@ -231,18 +231,17 @@ describe('Watching a job run', () => {
     expect(await screen.findByText(/out of credits/i)).toBeVisible();
   });
 
-  it('labels each job using the operation registry, not an assumption of redaction', async () => {
-    jobs = [aJob({ kind: 'OCR', status: 'SUCCEEDED', outputDocumentId: 'doc_2' })];
+  // Job history used to say "Redact" for every redaction. The server describes
+  // each job from what it stored, so history says what was actually done.
+  it('names what each job did, as the server describes it', async () => {
+    jobs = [
+      aJob({ kind: 'OCR', status: 'SUCCEEDED', description: 'OCR · German' }),
+      aJob({ id: 'job_2', status: 'SUCCEEDED', description: 'Redact · Email addresses' }),
+    ];
     render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
 
-    expect(await screen.findByText('OCR')).toBeVisible();
-  });
-
-  it('falls back to the raw kind when no operation in the registry names it', async () => {
-    jobs = [aJob({ kind: 'SOME_FUTURE_KIND', status: 'SUCCEEDED' })];
-    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
-
-    expect(await screen.findByText('SOME_FUTURE_KIND')).toBeVisible();
+    expect(await screen.findByText('OCR · German')).toBeVisible();
+    expect(screen.getByText('Redact · Email addresses')).toBeVisible();
   });
 
   it('says so when nothing has been done yet', async () => {
@@ -257,7 +256,7 @@ describe('Someone who may only read the document', () => {
     jobs = [aJob({ status: 'SUCCEEDED', outputDocumentId: 'doc_2' })];
     render(<DocumentTools documentId="doc_1" canRunTools={false} operations={operations} />);
 
-    await screen.findByText('Redact');
+    await screen.findByText('Redact · Social security numbers');
     expect(screen.queryByRole('button', { name: /tools/i })).not.toBeInTheDocument();
   });
 

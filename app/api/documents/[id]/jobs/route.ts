@@ -8,7 +8,7 @@ import {
 import { createDocumentJob } from '@/lib/document-jobs';
 import { jobRunner } from '@/lib/job-runner';
 import { nutrientConfig } from '@/lib/nutrient-config';
-import { operationsFor } from '@/lib/operations';
+import { describeJob, operationsFor } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       documentId: document.id,
       requestedById: session.user.id,
       kind: operation.kind,
-      parameters: body,
+      parameters: parsed.parameters,
     });
 
     // A failure to enqueue is not a failure to accept. The job is recorded, and
@@ -139,7 +139,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       },
     });
 
-    return NextResponse.json({ jobs });
+    // Described here rather than sent as stored parameters: those can hold a
+    // sealed password, and the browser needs a sentence, not a payload.
+    const described = jobs.map(({ parameters, ...job }) => ({
+      ...job,
+      description: describeJob({ kind: job.kind, parameters }),
+    }));
+
+    return NextResponse.json({ jobs: described });
   } catch (error) {
     if (unauthorized(error)) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });

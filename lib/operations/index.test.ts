@@ -9,7 +9,7 @@ import {
   toOperationSummary,
 } from '@/lib/operations';
 import { REDACTION_PRESETS } from '@/lib/operations/redaction';
-import type { OperationField } from '@/lib/operations/types';
+import type { DocumentOperation, OperationField } from '@/lib/operations/types';
 
 /**
  * Recursively asserts that nothing in `value` is a function.
@@ -100,29 +100,68 @@ describe('The operation registry', () => {
     return 'Sample'.slice(0, field.maxLength);
   };
 
+  /** The body DocumentTools would POST for an operation's default selections. */
+  const submittedBody = (operation: DocumentOperation): Record<string, unknown> => {
+    const presetOrRegexField = operation.fields.find((field) => field.kind === 'preset-or-regex');
+
+    // `preset-or-regex` is handled explicitly rather than folded into the
+    // generic loop below: it is redaction's own strategy shape — not one
+    // `body[field.name]` entry — assembled the way DocumentTools does for
+    // its default (non-regex) selection.
+    const body: Record<string, unknown> = presetOrRegexField
+      ? { kind: operation.kind, strategy: 'preset', preset: REDACTION_PRESETS[0] }
+      : { kind: operation.kind };
+
+    for (const field of operation.fields) {
+      if (field.kind === 'select' || field.kind === 'text') {
+        body[field.name] = sampleValueFor(field);
+      }
+    }
+
+    return body;
+  };
+
+  const parsedOk = (operation: DocumentOperation, body: unknown) => {
+    const result = operation.parse(body);
+    if (!result.ok) {
+      throw new Error(`${operation.kind} rejected ${JSON.stringify(body)}: ${result.message}`);
+    }
+    return result;
+  };
+
   it('parses successfully with the request its own fields would actually submit', () => {
     for (const operation of DOCUMENT_OPERATIONS) {
-      const presetOrRegexField = operation.fields.find((field) => field.kind === 'preset-or-regex');
-
-      // `preset-or-regex` is handled explicitly rather than folded into the
-      // generic loop below: it is redaction's own strategy shape — not one
-      // `body[field.name]` entry — assembled the way DocumentTools does for
-      // its default (non-regex) selection.
-      const body: Record<string, unknown> = presetOrRegexField
-        ? { kind: operation.kind, strategy: 'preset', preset: REDACTION_PRESETS[0] }
-        : { kind: operation.kind };
-
-      for (const field of operation.fields) {
-        if (field.kind === 'select' || field.kind === 'text') {
-          body[field.name] = sampleValueFor(field);
-        }
-      }
-
-      const result = operation.parse(body);
+      const result = operation.parse(submittedBody(operation));
 
       expect(result.ok, `${operation.kind} rejected the request its own fields would submit`).toBe(
         true
       );
+    }
+  });
+
+  // Jobs run, and are described in history, from their stored parameters. A
+  // stored form that parsed to a different job would run something other than
+  // what was asked, and describe it wrongly.
+  it('stores parameters that parse back to the same job', () => {
+    for (const operation of DOCUMENT_OPERATIONS) {
+      const requested = parsedOk(operation, submittedBody(operation));
+      const restored = parsedOk(operation, requested.parameters);
+
+      expect(restored.summary, operation.kind).toBe(requested.summary);
+      expect(restored.buildInstructions({ filePartName: 'document' }), operation.kind).toEqual(
+        requested.buildInstructions({ filePartName: 'document' })
+      );
+    }
+  });
+
+  it('stores only what the operation reads, not whatever the request carried', () => {
+    for (const operation of DOCUMENT_OPERATIONS) {
+      const { parameters } = parsedOk(operation, {
+        ...submittedBody(operation),
+        unrelated: 'should not be stored',
+      });
+
+      expect(parameters, operation.kind).not.toHaveProperty('unrelated');
     }
   });
 });

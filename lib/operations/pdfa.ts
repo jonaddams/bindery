@@ -112,6 +112,8 @@ export const pdfaOperation: DocumentOperation = {
     return {
       ok: true,
       outputSuffix: 'pdfa',
+      summary: PDFA_CONFORMANCE_LABELS[conformance],
+      parameters: { conformance },
       buildInstructions: ({ filePartName }) => buildPdfaInstructions({ filePartName, conformance }),
     };
   },

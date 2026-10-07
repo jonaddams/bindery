@@ -1,4 +1,4 @@
-import type { DocumentJobKind } from '@prisma/client';
+import type { DocumentJobKind, Prisma } from '@prisma/client';
 import type { ProcessInstructions } from '@/lib/document-provider';
 import type { NutrientTarget } from '@/lib/nutrient-config';
 
@@ -41,6 +41,17 @@ export type OperationParseResult =
       buildInstructions: (options: { filePartName: string }) => ProcessInstructions;
       /** Appended to the source filename to name the output. */
       outputSuffix: string;
+      /**
+       * What this job does, for job history: "Email addresses", "German",
+       * "PDF/A-2b". Empty when the operation has no options worth naming.
+       */
+      summary: string;
+      /**
+       * What to store for the job, which the runner later parses again to run it.
+       * Only the fields the operation reads — never the raw request body — and
+       * with anything secret sealed, since it lands in Postgres.
+       */
+      parameters: Prisma.InputJsonObject;
     }
   | { ok: false; message: string };
 

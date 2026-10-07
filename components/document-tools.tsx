@@ -18,7 +18,8 @@ type Job = {
   id: string;
   kind: DocumentJobKind;
   status: JobStatus;
-  parameters: Record<string, unknown>;
+  /** What the job did, worded by the server from its stored parameters. */
+  description: string;
   outputDocumentId: string | null;
   error: string | null;
   attempts: number;
@@ -241,9 +242,6 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
 
   const canSubmit = !isBusy && (!needsRegexText || regex.trim().length > 0);
 
-  const labelFor = (job: Job): string =>
-    operations.find((operation) => operation.kind === job.kind)?.label ?? job.kind;
-
   return (
     <>
       {canRunTools && (
@@ -425,7 +423,7 @@ export function DocumentTools({ documentId, canRunTools, operations }: DocumentT
                 <span className={`bnd-dot ${STATUS_DOTS[job.status]}`} />
 
                 <div style={{ minWidth: 0 }}>
-                  <b>{labelFor(job)}</b>
+                  <b>{job.description}</b>
                   <div className="d">{STATUS_LABELS[job.status]}</div>
                   {job.status === 'FAILED' && job.error && (
                     <div className="e" style={{ overflowWrap: 'anywhere' }}>

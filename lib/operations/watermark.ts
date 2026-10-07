@@ -93,6 +93,8 @@ export const watermarkOperation: DocumentOperation = {
     return {
       ok: true,
       outputSuffix: 'watermarked',
+      summary: `“${text}”`,
+      parameters: { text },
       buildInstructions: ({ filePartName }) => buildWatermarkInstructions({ filePartName, text }),
     };
   },

@@ -24,6 +24,25 @@ export const DOCUMENT_OPERATIONS: readonly DocumentOperation[] = [
 export const operationFor = (kind: DocumentJobKind): DocumentOperation | undefined =>
   DOCUMENT_OPERATIONS.find((operation) => operation.kind === kind);
 
+/**
+ * A job as job history should name it: "Redact · Email addresses".
+ *
+ * Parsed from the stored parameters, so it says what actually ran. Falls back to
+ * the operation's label when they no longer parse — a job written by older code
+ * should still be listed, just less specifically.
+ */
+export const describeJob = (job: { kind: DocumentJobKind; parameters: unknown }): string => {
+  const operation = operationFor(job.kind);
+
+  if (!operation) {
+    return job.kind;
+  }
+
+  const parsed = operation.parse(job.parameters);
+
+  return parsed.ok && parsed.summary ? `${operation.label} · ${parsed.summary}` : operation.label;
+};
+
 /** What this deployment can offer, which is not the same as what it implements. */
 export const operationsFor = (target: NutrientTarget): readonly DocumentOperation[] =>
   DOCUMENT_OPERATIONS.filter((operation) => operation.backends.includes(target));
