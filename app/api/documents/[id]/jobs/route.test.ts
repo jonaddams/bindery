@@ -99,6 +99,22 @@ describe('Queueing a redaction', () => {
     );
   });
 
+  it('refuses a tool the document is not offered, such as converting a PDF to PDF', async () => {
+    findFirstDocument.mockResolvedValue({ id: 'doc_1', fileType: 'application/pdf' });
+
+    const response = await post({ kind: 'CONVERT' });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/not offered for this document/);
+    expect(createDocumentJob).not.toHaveBeenCalled();
+  });
+
+  it('accepts conversion for a document that is not a PDF', async () => {
+    findFirstDocument.mockResolvedValue({ id: 'doc_1', fileType: 'image/png' });
+
+    expect((await post({ kind: 'CONVERT' })).status).toBe(202);
+  });
+
   it('stores what the operation read from the request, not the raw body', async () => {
     await post({ ...aRedaction, unrelated: 'not for the database' });
 

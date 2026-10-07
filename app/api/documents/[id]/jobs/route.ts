@@ -8,7 +8,7 @@ import {
 import { createDocumentJob } from '@/lib/document-jobs';
 import { jobRunner } from '@/lib/job-runner';
 import { nutrientConfig } from '@/lib/nutrient-config';
-import { describeJob, operationsFor } from '@/lib/operations';
+import { describeJob, operationsFor, operationsForDocument } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -72,11 +72,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // act on it, matching the other document routes.
     const document = await prisma.document.findFirst({
       where: { id, ...getDocumentWriteFilter(session.user as SessionUser) },
-      select: { id: true },
+      select: { id: true, fileType: true },
     });
 
     if (!document) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+
+    const offered = operationsForDocument({
+      target: nutrientConfig().target,
+      fileType: document.fileType,
+    }).some((candidate) => candidate.kind === operation.kind);
+
+    if (!offered) {
+      return NextResponse.json(
+        { error: `"${operation.label}" is not offered for this document.` },
+        { status: 400 }
+      );
     }
 
     const job = await createDocumentJob({

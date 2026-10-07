@@ -7,7 +7,7 @@ import { DocumentViewer } from '@/components/document-viewer';
 import { RailSection } from '@/components/rail-section';
 import { getDocumentWriteFilter, getEffectiveDocumentFilter, requireAuth } from '@/lib/auth';
 import { nutrientConfig } from '@/lib/nutrient-config';
-import { operationsFor, toOperationSummary } from '@/lib/operations';
+import { operationsForDocument, toOperationSummary } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
 
 type Params = {
@@ -82,7 +82,10 @@ export default async function DocumentView({ params }: { params: Promise<Params>
     // DocumentOperation.parse is a function — React cannot pass a function from
     // a server component to a Client Component, and this is not caught by
     // typecheck or build, only by actually loading the page.
-    const operations = operationsFor(nutrientConfig().target).map(toOperationSummary);
+    const operations = operationsForDocument({
+      target: nutrientConfig().target,
+      fileType: document.fileType,
+    }).map(toOperationSummary);
 
     const formatFileSize = (bytes: bigint | null) => {
       if (!bytes || bytes === BigInt(0)) return '0 Bytes';

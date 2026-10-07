@@ -1,6 +1,7 @@
 import type { DocumentJobKind } from '@prisma/client';
 import type { NutrientTarget } from '@/lib/nutrient-config';
 import { compressOperation } from '@/lib/operations/compress';
+import { convertOperation } from '@/lib/operations/convert';
 import { flattenOperation } from '@/lib/operations/flatten';
 import { ocrOperation } from '@/lib/operations/ocr';
 import { pdfaOperation } from '@/lib/operations/pdfa';
@@ -29,6 +30,7 @@ export const DOCUMENT_OPERATIONS: readonly DocumentOperation[] = [
   pdfaOperation,
   pdfuaOperation,
   protectOperation,
+  convertOperation,
 ];
 
 export const operationFor = (kind: DocumentJobKind): DocumentOperation | undefined =>
@@ -56,6 +58,19 @@ export const describeJob = (job: { kind: DocumentJobKind; parameters: unknown })
 /** What this deployment can offer, which is not the same as what it implements. */
 export const operationsFor = (target: NutrientTarget): readonly DocumentOperation[] =>
   DOCUMENT_OPERATIONS.filter((operation) => operation.backends.includes(target));
+
+/**
+ * What one document is offered: the deployment's operations, less any that do
+ * not apply to its type — converting a PDF to a PDF, for one. The page and the
+ * jobs route both ask this, so the menu and what the route accepts cannot drift.
+ */
+export const operationsForDocument = (options: {
+  target: NutrientTarget;
+  fileType: string;
+}): readonly DocumentOperation[] =>
+  operationsFor(options.target).filter(
+    (operation) => !operation.appliesTo || operation.appliesTo(options.fileType)
+  );
 
 /**
  * Project an operation down to what a Client Component may hold.

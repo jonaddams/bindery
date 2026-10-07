@@ -85,6 +85,12 @@ export type DocumentProvider = {
   processDocument(options: {
     source: Uint8Array<ArrayBuffer>;
     filename: string;
+    /**
+     * The source's own type. Both backends sniff the bytes and convert a
+     * mislabelled .docx anyway, but the type is a fact the caller knows and
+     * should not misstate. Defaults to PDF.
+     */
+    contentType?: string;
     instructions: ProcessInstructions;
   }): Promise<ArrayBuffer>;
   /**
@@ -297,9 +303,10 @@ const createDwsProvider = (config: NutrientConfig): DocumentProvider => {
     async processDocument(options: {
       source: Uint8Array<ArrayBuffer>;
       filename: string;
+      contentType?: string;
       instructions: ProcessInstructions;
     }): Promise<ArrayBuffer> {
-      const { source, filename, instructions } = options;
+      const { source, filename, contentType = 'application/pdf', instructions } = options;
 
       const body = new FormData();
       body.set('instructions', JSON.stringify(instructions));
@@ -308,7 +315,7 @@ const createDwsProvider = (config: NutrientConfig): DocumentProvider => {
       // API answers file_not_found. The instructions are the authority on it, so
       // it is read from them rather than passed alongside and kept in step by hand.
       const partName = instructions.parts[0]?.file ?? 'document';
-      body.set(partName, new File([source], filename, { type: 'application/pdf' }));
+      body.set(partName, new File([source], filename, { type: contentType }));
 
       const response = await fetch(buildUrl, {
         method: 'POST',
@@ -495,15 +502,16 @@ const createDocumentEngineProvider = (config: NutrientConfig): DocumentProvider 
     async processDocument(options: {
       source: Uint8Array<ArrayBuffer>;
       filename: string;
+      contentType?: string;
       instructions: ProcessInstructions;
     }): Promise<ArrayBuffer> {
-      const { source, filename, instructions } = options;
+      const { source, filename, contentType = 'application/pdf', instructions } = options;
 
       const body = new FormData();
       body.set('instructions', JSON.stringify(instructions));
 
       const partName = instructions.parts[0]?.file ?? 'document';
-      body.set(partName, new File([source], filename, { type: 'application/pdf' }));
+      body.set(partName, new File([source], filename, { type: contentType }));
 
       const response = await fetch(buildUrl, {
         // The same token as everything else: Document Engine has no second key,

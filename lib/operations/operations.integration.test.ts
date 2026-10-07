@@ -9,6 +9,7 @@ import { deflateSync, inflateSync } from 'node:zlib';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { documentProvider } from '@/lib/document-provider';
 import { compressOperation } from '@/lib/operations/compress';
+import { convertOperation } from '@/lib/operations/convert';
 import { flattenOperation } from '@/lib/operations/flatten';
 import { ocrOperation } from '@/lib/operations/ocr';
 import { PDFA_CONFORMANCE_LEVELS, pdfaOperation } from '@/lib/operations/pdfa';
@@ -219,8 +220,8 @@ const annotatedPdf = (): Uint8Array<ArrayBuffer> => {
   return new Uint8Array(Buffer.from(pdf, 'latin1'));
 };
 
-/** A noisy, photo-like image as a one-page PDF: compression needs something to chew on. */
-const imagePdf = async (): Promise<Uint8Array<ArrayBuffer>> => {
+/** A noisy, photo-like 600×600 PNG, written by hand. */
+const noisePng = (): Uint8Array<ArrayBuffer> => {
   const width = 600;
   const height = 600;
   const rows = Buffer.alloc((width * 3 + 1) * height);
@@ -266,7 +267,12 @@ const imagePdf = async (): Promise<Uint8Array<ArrayBuffer>> => {
     chunk('IDAT', deflateSync(rows)),
     chunk('IEND', Buffer.alloc(0)),
   ]);
+  return new Uint8Array(png);
+};
 
+/** The noise image as a one-page PDF: compression needs something to chew on. */
+const imagePdf = async (): Promise<Uint8Array<ArrayBuffer>> => {
+  const png = noisePng();
   const body = new FormData();
   body.set('instructions', JSON.stringify({ parts: [{ file: 'page' }] }));
   body.set('page', new File([png], 'page.png', { type: 'image/png' }));
@@ -431,6 +437,23 @@ describe.skipIf(!engineIsRunning)('Operations against a real engine', () => {
 
     expect(annotationCount(output)).toBe(0);
     expect(await extractText(new Uint8Array(output))).toContain('ANNOTATION TEXT');
+  }, 120_000);
+
+  it('convert turns an image into a PDF', async () => {
+    const parsed = convertOperation.parse({ kind: 'CONVERT' });
+    if (!parsed.ok) throw new Error(parsed.message);
+
+    const output = new Uint8Array(
+      await documentProvider().processDocument({
+        source: noisePng(),
+        filename: 'photo.png',
+        contentType: 'image/png',
+        instructions: parsed.buildInstructions({ filePartName: 'document' }),
+      })
+    );
+
+    expect(Buffer.from(output.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
+    expect(inflatedText(output)).toMatch(/\/Subtype\s*\/Image\b/);
   }, 120_000);
 
   it('password-protect encrypts the copy', async () => {

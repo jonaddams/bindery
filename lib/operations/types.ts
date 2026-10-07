@@ -70,6 +70,11 @@ export type DocumentOperation = {
   /** Which backends can perform this. Lives here so there is no parallel list to drift. */
   backends: readonly NutrientTarget[];
   fields: readonly OperationField[];
+  /**
+   * Whether this operation makes sense for a document of this type. Omitted
+   * means every document. Server-side only, like `parse`.
+   */
+  appliesTo?: (fileType: string) => boolean;
   parse(raw: unknown): OperationParseResult;
 };
 

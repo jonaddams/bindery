@@ -69,6 +69,7 @@ const OPERATION_ICONS: Record<DocumentJobKind, (size?: number) => ReactNode> = {
   FLATTEN: BI.flatten,
   ROTATE: BI.rotate,
   PROTECT: BI.protect,
+  CONVERT: BI.convert,
 };
 
 /** Starting values for an operation's ordinary (select/text) fields. */
