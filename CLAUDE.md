@@ -1704,6 +1704,11 @@ Added 2026-10-07.
   document's filename (`lib/viewer-download.ts`, the route's naming rule too). The
   SDK's types here are hand-written in `global.d.ts`; add a member there when the
   app starts using one.
+- **Renaming goes through `PUT /api/documents/[id]`** (write access), which had no
+  tests and accepted blank, non-string and unbounded titles until 2026-10-08.
+  `lib/document-title.ts` owns the rule (trimmed, 1–200 characters) and the
+  `TITLE_MAX_LENGTH` both rename inputs use. The browser tab title stays
+  "Bindery" on every page; it is not per-document.
 - **Retry makes a new job** from the failed job's stored parameters, re-parsed, so
   history keeps both attempts. A protect job whose sealed password can no longer
   be opened is refused with that reason.
