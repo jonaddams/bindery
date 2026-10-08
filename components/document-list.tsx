@@ -2,10 +2,11 @@
 
 import type { Document } from '@prisma/client';
 import Link from 'next/link';
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Avatar } from '@/components/bindery/avatar';
 import { BI } from '@/components/bindery/icons';
 import { useSession } from '@/lib/auth-client';
+import { TITLE_MAX_LENGTH } from '@/lib/document-title';
 
 type DocumentWithOwner = Document & {
   ownerId: string;
@@ -110,11 +111,13 @@ function FileIcon({ document }: { document: DocumentWithOwner }) {
 
 type RowMenuProps = {
   document: DocumentWithOwner;
+  /** Owner, or an admin acting as admin: the write rule renaming and deleting share. */
   canDelete: boolean;
   onDelete: () => void;
+  onRename: () => void;
 };
 
-function RowMenu({ document, canDelete, onDelete }: RowMenuProps) {
+function RowMenu({ document, canDelete, onDelete, onRename }: RowMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -179,6 +182,17 @@ function RowMenu({ document, canDelete, onDelete }: RowMenuProps) {
           </button>
           {canDelete && (
             <>
+              <button
+                className="mi"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onRename();
+                }}
+              >
+                {BI.pen(15)} Rename…
+              </button>
               <hr />
               <button
                 className="mi bad"
@@ -195,6 +209,107 @@ function RowMenu({ document, canDelete, onDelete }: RowMenuProps) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+type RenameModalProps = {
+  documentId: string;
+  title: string;
+  onRenamed: (title: string) => void;
+  onCancel: () => void;
+};
+
+/** Rename from the list. The route trims and validates; a refusal is shown here. */
+function RenameModal({ documentId, title, onRenamed, onCancel }: RenameModalProps) {
+  const [draft, setDraft] = useState(title);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSaving) onCancel();
+    };
+    window.document.addEventListener('keydown', onKey);
+    return () => window.document.removeEventListener('keydown', onKey);
+  }, [isSaving, onCancel]);
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: draft }),
+      });
+      const body: { document?: { title?: string }; error?: string } = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok) {
+        setError(body.error ?? 'The document could not be renamed.');
+        return;
+      }
+
+      onRenamed(body.document?.title ?? draft.trim());
+    } catch {
+      setError('The document could not be renamed.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="bnd-scrim">
+      <form
+        className="bnd-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Rename document"
+        onSubmit={save}
+      >
+        <div className="bnd-modal-h">
+          <h2>Rename document</h2>
+          <button
+            className="bnd-ib"
+            type="button"
+            aria-label="Close"
+            onClick={onCancel}
+            disabled={isSaving}
+            style={{ margin: '-6px -6px 0 0' }}
+          >
+            {BI.x(16)}
+          </button>
+        </div>
+        <div className="bnd-modal-b" style={{ display: 'grid', gap: 8 }}>
+          <input
+            className="bnd-input"
+            aria-label="Document title"
+            value={draft}
+            maxLength={TITLE_MAX_LENGTH}
+            onChange={(event) => setDraft(event.target.value)}
+            disabled={isSaving}
+            // biome-ignore lint/a11y/noAutofocus: the dialog exists to edit this field
+            autoFocus
+          />
+          {error && (
+            <p className="bnd-hint bad" role="alert" style={{ margin: 0 }}>
+              {error}
+            </p>
+          )}
+        </div>
+        <div className="bnd-modal-f">
+          <button className="btn ghost" type="button" onClick={onCancel} disabled={isSaving}>
+            Cancel
+          </button>
+          <button className="btn" type="submit" disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -271,6 +386,7 @@ export function DocumentList() {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<Scope>('all');
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
 
   const toggleExpanded = (id: string) => {
     setExpanded((current) => {
@@ -459,6 +575,7 @@ export function DocumentList() {
         document={document}
         canDelete={canDeleteDocument(document)}
         onDelete={() => handleDeleteClick(document)}
+        onRename={() => setRenaming({ id: document.id, title: document.title })}
       />
     </div>
   );
@@ -578,6 +695,20 @@ export function DocumentList() {
             </div>
           )}
         </>
+      )}
+
+      {renaming && (
+        <RenameModal
+          documentId={renaming.id}
+          title={renaming.title}
+          onCancel={() => setRenaming(null)}
+          onRenamed={(title) => {
+            setDocuments((current) =>
+              current.map((doc) => (doc.id === renaming.id ? { ...doc, title } : doc))
+            );
+            setRenaming(null);
+          }}
+        />
       )}
 
       {deleteConfirmation && (

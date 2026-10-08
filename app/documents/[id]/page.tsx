@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { AppFrame } from '@/components/app-frame';
 import { BI } from '@/components/bindery/icons';
+import { DocumentTitle } from '@/components/document-title';
 import { DocumentTools } from '@/components/document-tools';
 import { DocumentViewer } from '@/components/document-viewer';
 import { RailSection } from '@/components/rail-section';
@@ -143,7 +144,11 @@ export default async function DocumentView({ params }: { params: Promise<Params>
 
         <div className="bnd-dhead">
           <div className="l">
-            <h1 className="bnd-h1">{document.title}</h1>
+            <DocumentTitle
+              documentId={document.id}
+              title={document.title}
+              canRename={canRunTools}
+            />
             <div className="meta">
               <span className={`bnd-ficon ${badge.className}`}>{badge.label}</span>
               <span>{formatFileSize(document.fileSize)}</span>
