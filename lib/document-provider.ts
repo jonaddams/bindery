@@ -246,8 +246,10 @@ const createDwsProvider = (config: NutrientConfig): DocumentProvider => {
             // `permissions`, not `document_permissions`: the latter is accepted
             // without complaint and then ignored, so the wrong key leaves the
             // session on defaults instead of failing loudly. Write access is
-            // what lets the reader add comments.
-            permissions: ['read', 'write'],
+            // what lets the reader add comments; download is what enables the
+            // viewer's own download and print buttons. Anyone who can open a
+            // document can already save it from the list, so it grants nothing new.
+            permissions: ['read', 'write', 'download'],
           },
         ],
         exp: Math.floor(Date.now() / 1000) + SESSION_LIFETIME_SECONDS,

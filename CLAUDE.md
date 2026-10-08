@@ -1691,6 +1691,13 @@ Added 2026-10-07.
   one rule: no Tools, no OCR suggestion, no app download, and the jobs, retry and
   download routes refuse with the reason. The viewer still opens it and its own
   download button saves it.
+- **The viewer's own download and print buttons need the `download` session
+  permission.** DWS sessions asked for only `['read', 'write']`, so on production
+  both buttons were greyed out while Document Engine sessions (which already had
+  `download`) worked. Probed 2026-10-08: DWS accepts `download` and puts it in the
+  JWT; it rejects unknown names, `print` included — there is no separate print
+  permission. Sessions are minted fresh on every view, so existing documents
+  pick the change up immediately.
 - **Retry makes a new job** from the failed job's stored parameters, re-parsed, so
   history keeps both attempts. A protect job whose sealed password can no longer
   be opened is refused with that reason.
