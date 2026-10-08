@@ -30,7 +30,13 @@ const aDocument = (overrides: Record<string, unknown> = {}) => ({
 
 let documents: unknown[] = [];
 
-const fetchMock = vi.fn((input: unknown, init?: { method?: string }) => {
+let renameBodies: string[] = [];
+let renameResponse: { ok: boolean; body: Record<string, unknown> } = {
+  ok: true,
+  body: { document: { title: 'Q3 Contract (signed)' } },
+};
+
+const fetchMock = vi.fn((input: unknown, init?: { method?: string; body?: string }) => {
   const url = String(input);
   const method = init?.method ?? 'GET';
   calls.push({ url, method });
@@ -39,11 +45,21 @@ const fetchMock = vi.fn((input: unknown, init?: { method?: string }) => {
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   }
 
+  if (method === 'PUT') {
+    renameBodies.push(String(init?.body));
+    return Promise.resolve({
+      ok: renameResponse.ok,
+      json: () => Promise.resolve(renameResponse.body),
+    });
+  }
+
   return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents }) });
 });
 
 beforeEach(() => {
   calls = [];
+  renameBodies = [];
+  renameResponse = { ok: true, body: { document: { title: 'Q3 Contract (signed)' } } };
   sessionUser = { id: 'me', role: 'USER', currentImpersonationMode: 'SELF' };
   documents = [
     aDocument(),
@@ -221,6 +237,43 @@ describe('Finding a document', () => {
 
     await user.click(screen.getByRole('button', { name: /clear filters/i }));
     expect(screen.getByRole('link', { name: 'Q3 Contract' })).toBeVisible();
+  });
+});
+
+describe('Renaming from the list', () => {
+  it('renames through a dialog and shows the new title in the row', async () => {
+    render(<DocumentList />);
+    const user = await openActions('Q3 Contract');
+
+    await user.click(screen.getByRole('menuitem', { name: /rename/i }));
+    const field = within(screen.getByRole('dialog', { name: /rename/i })).getByRole('textbox', {
+      name: 'Document title',
+    });
+    await user.clear(field);
+    await user.type(field, 'Q3 Contract (signed){Enter}');
+
+    expect(await screen.findByRole('link', { name: 'Q3 Contract (signed)' })).toBeVisible();
+    expect(renameBodies).toEqual([JSON.stringify({ title: 'Q3 Contract (signed)' })]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('says why a title was refused, and keeps the dialog open', async () => {
+    renameResponse = { ok: false, body: { error: 'A title can be at most 200 characters.' } };
+    render(<DocumentList />);
+    const user = await openActions('Q3 Contract');
+
+    await user.click(screen.getByRole('menuitem', { name: /rename/i }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('at most 200 characters');
+    expect(screen.getByRole('dialog', { name: /rename/i })).toBeVisible();
+  });
+
+  it("offers no rename on someone else's document", async () => {
+    render(<DocumentList />);
+    await openActions('Board Minutes');
+
+    expect(screen.queryByRole('menuitem', { name: /rename/i })).not.toBeInTheDocument();
   });
 });
 

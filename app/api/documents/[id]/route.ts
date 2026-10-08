@@ -6,6 +6,7 @@ import {
   type SessionUser,
 } from '@/lib/auth';
 import { documentProvider } from '@/lib/document-provider';
+import { parseTitle } from '@/lib/document-title';
 import { prisma } from '@/lib/prisma';
 import { withRetry } from '@/lib/with-retry';
 
@@ -75,11 +76,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const session = await requireAuth();
     const filter = getDocumentWriteFilter(session.user as SessionUser);
 
-    const { title, author } = await request.json();
+    const body: unknown = await request.json().catch(() => undefined);
 
-    if (!title) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    if (typeof body !== 'object' || body === null) {
+      return NextResponse.json({ error: 'A JSON body is required.' }, { status: 400 });
     }
+
+    const parsed = parseTitle(Reflect.get(body, 'title'));
+
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.message }, { status: 400 });
+    }
+
+    const { title } = parsed;
+    const rawAuthor: unknown = Reflect.get(body, 'author');
+    const author = typeof rawAuthor === 'string' ? rawAuthor.trim() : '';
 
     // Check if document exists and user has access
     const existingDocument = await prisma.document.findFirst({
