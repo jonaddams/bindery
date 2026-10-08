@@ -50,7 +50,20 @@ describe('viewer session creation', () => {
 
     await documentProvider().createViewerSession({ documentId: 'doc_1', userId: 'user_alice' });
 
-    expect(sentBody(fetchMock).allowed_documents[0].permissions).toEqual(['read', 'write']);
+    expect(sentBody(fetchMock).allowed_documents[0].permissions).toEqual(
+      expect.arrayContaining(['read', 'write'])
+    );
+  });
+
+  // Without it the viewer greys out its own download and print buttons. DWS
+  // accepts `download` (probed 2026-10-08; it reaches the session JWT) and
+  // rejects names it does not know, `print` among them.
+  it('grants download so the viewer can save and print the document', async () => {
+    const fetchMock = mockFetch(sessionResponse());
+
+    await documentProvider().createViewerSession({ documentId: 'doc_1', userId: 'user_alice' });
+
+    expect(sentBody(fetchMock).allowed_documents[0].permissions).toContain('download');
   });
 
   it('uses the permissions key that DWS actually reads', async () => {
