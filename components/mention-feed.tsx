@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Avatar } from '@/components/bindery/avatar';
 import { BI } from '@/components/bindery/icons';
 import { formatRelativeTime } from '@/lib/relative-time';
+import { announceUnreadMentions } from '@/lib/unread-mentions';
 
 type Mention = {
   id: string;
@@ -90,7 +91,9 @@ export function MentionFeed({ variant }: MentionFeedProps) {
         !mentionIds || mentionIds.includes(mention.id) ? { ...mention, read: true } : mention
       )
     );
-    setUnread((current) => (mentionIds ? Math.max(0, current - mentionIds.length) : 0));
+    const stillUnread = mentionIds ? Math.max(0, unread - mentionIds.length) : 0;
+    setUnread(stillUnread);
+    announceUnreadMentions(stillUnread);
 
     try {
       await fetch('/api/mentions', {

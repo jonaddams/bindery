@@ -270,6 +270,29 @@ describe('Deleting a document', () => {
   });
 });
 
+describe('Downloading from the list', () => {
+  it('offers to download the stored file', async () => {
+    render(<DocumentList />);
+
+    await openActions('Q3 Contract');
+
+    expect(screen.getByRole('menuitem', { name: /download/i })).toHaveAttribute(
+      'href',
+      '/api/documents/doc_1/download'
+    );
+  });
+
+  // The server cannot fetch a protected copy without its password; the viewer can.
+  it('does not offer it for a password-protected copy', async () => {
+    documents = [aDocument({ producedByJob: { kind: 'PROTECT' } })];
+    render(<DocumentList />);
+
+    await openActions('Q3 Contract');
+
+    expect(screen.queryByRole('menuitem', { name: /download/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('Sharing a link', () => {
   it('copies a link to the document', async () => {
     render(<DocumentList />);

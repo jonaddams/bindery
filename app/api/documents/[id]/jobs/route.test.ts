@@ -130,6 +130,20 @@ describe('Queueing a redaction', () => {
     expect(createDocumentJob).not.toHaveBeenCalled();
   });
 
+  it('refuses to run anything on a password-protected copy, saying why', async () => {
+    findFirstDocument.mockResolvedValue({
+      id: 'doc_1',
+      fileType: 'application/pdf',
+      producedByJob: { kind: 'PROTECT' },
+    });
+
+    const response = await post(aRedaction);
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/password-protected/i);
+    expect(createDocumentJob).not.toHaveBeenCalled();
+  });
+
   it('accepts conversion for a document that is not a PDF', async () => {
     findFirstDocument.mockResolvedValue({ id: 'doc_1', fileType: 'image/png' });
 
@@ -260,6 +274,26 @@ describe('Listing the jobs for a document', () => {
     const { jobs } = await (await get()).json();
 
     expect(jobs[0].description).toBe('Redact · Email addresses');
+  });
+
+  it('reports how big the document was and how big the result came out', async () => {
+    findFirstDocument.mockResolvedValue({ id: 'doc_1', fileSize: BigInt(1_800_000) });
+    findManyJobs.mockResolvedValue([
+      {
+        id: 'job_1',
+        status: 'SUCCEEDED',
+        kind: 'REDACTION',
+        parameters: { strategy: 'preset', preset: 'email-address' },
+        output: { fileSize: BigInt(220_000) },
+      },
+    ]);
+
+    const { jobs } = await (await get()).json();
+
+    expect(jobs[0]).toEqual(
+      expect.objectContaining({ inputBytes: 1_800_000, outputBytes: 220_000 })
+    );
+    expect(jobs[0]).not.toHaveProperty('output');
   });
 
   it('falls back to the tool name when stored parameters no longer parse', async () => {

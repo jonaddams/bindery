@@ -25,6 +25,28 @@ type Job = {
   attempts: number;
   createdAt: string;
   finishedAt: string | null;
+  /** The document's size, and the result's once there is one. */
+  inputBytes?: number | null;
+  outputBytes?: number | null;
+};
+
+const formatBytes = (bytes: number): string => {
+  const units = ['Bytes', 'KB', 'MB', 'GB'];
+  const power =
+    bytes > 0 ? Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1) : 0;
+  return `${Math.round((bytes / 1024 ** power) * 100) / 100} ${units[power]}`;
+};
+
+/**
+ * "1.72 MB → 214.84 KB (−88%)": what a finished job did to the file. A saving is
+ * given as a percentage; growth is not, since "+1,200%" for OCR adding a text
+ * layer would read as a warning rather than a fact.
+ */
+const sizeChange = (job: Job): string | null => {
+  if (job.status !== 'SUCCEEDED' || !job.inputBytes || !job.outputBytes) return null;
+  const change = `${formatBytes(job.inputBytes)} → ${formatBytes(job.outputBytes)}`;
+  const saved = Math.round((1 - job.outputBytes / job.inputBytes) * 100);
+  return saved >= 1 ? `${change} (\u2212${saved}%)` : change;
 };
 
 type DocumentToolsProps = {
@@ -43,6 +65,8 @@ type DocumentToolsProps = {
    * so offer to make it searchable until OCR has been run or queued.
    */
   suggestOcr?: boolean;
+  /** Why no tool can run on this document (`toolsUnavailableReason`), shown in place of Tools. */
+  unavailableReason?: string | null;
 };
 
 type Toast = { id: string; text: string; tone: 'ok' | 'bad'; href?: string };
@@ -116,7 +140,10 @@ export function DocumentTools({
   canRunTools,
   operations,
   suggestOcr = false,
+  unavailableReason = null,
 }: DocumentToolsProps) {
+  // A document no tool can open offers neither the menu nor the OCR suggestion.
+  const toolsOffered = canRunTools && !unavailableReason;
   const [jobs, setJobs] = useState<Job[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const ocr = operations.find((operation) => operation.kind === 'OCR');
@@ -216,7 +243,7 @@ export function DocumentTools({
   };
 
   const showScanSuggestion =
-    suggestOcr && canRunTools && ocr !== undefined && !jobs.some((job) => job.kind === 'OCR');
+    suggestOcr && toolsOffered && ocr !== undefined && !jobs.some((job) => job.kind === 'OCR');
 
   const selectedOperation = operations.find((operation) => operation.kind === selectedKind) ?? null;
 
@@ -273,12 +300,15 @@ export function DocumentTools({
   };
 
   /** Queue a job; true when the server accepted it. */
-  const postJob = async (body: Record<string, unknown>): Promise<boolean> => {
+  const postJob = async (
+    body: Record<string, unknown>,
+    url = `/api/documents/${documentId}/jobs`
+  ): Promise<boolean> => {
     setIsBusy(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/documents/${documentId}/jobs`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -364,7 +394,17 @@ export function DocumentTools({
         </div>
       )}
 
-      {canRunTools && (
+      {canRunTools && unavailableReason && (
+        <div className="bnd-alert" style={{ background: 'var(--bg-elev)' }}>
+          {BI.lock(18)}
+          <div>
+            <b>Tools unavailable</b>
+            <p>{unavailableReason}</p>
+          </div>
+        </div>
+      )}
+
+      {toolsOffered && (
         <RailSection title="Tools" flush={!selectedOperation} open={isOpen} onToggle={toggleTools}>
           {menuOpen && (
             <ul className="bnd-tgroup" style={{ listStyle: 'none', margin: 0 }}>
@@ -545,6 +585,13 @@ export function DocumentTools({
       )}
 
       <RailSection title="Activity" count={jobs.length || undefined} flush>
+        {/* A refused retry has no form open to show its error; the banner and
+            the Tools form show their own. */}
+        {error && !selectedOperation && !showScanSuggestion && (
+          <p className="bnd-hint bad" role="alert" style={{ margin: 0, padding: '0 14px 8px' }}>
+            {error}
+          </p>
+        )}
         {jobs.length === 0 ? (
           <p className="bnd-hint" style={{ margin: 0, padding: '0 14px 8px' }}>
             No jobs yet.
@@ -558,6 +605,7 @@ export function DocumentTools({
                 <div style={{ minWidth: 0 }}>
                   <b>{job.description}</b>
                   <div className="d">{STATUS_LABELS[job.status]}</div>
+                  {sizeChange(job) && <div className="d">{sizeChange(job)}</div>}
                   {job.status === 'FAILED' && job.error && (
                     <div className="e" style={{ overflowWrap: 'anywhere' }}>
                       {job.error}
@@ -568,6 +616,19 @@ export function DocumentTools({
                 <div className="r">
                   {job.status === 'SUCCEEDED' && job.outputDocumentId && (
                     <Link href={`/documents/${job.outputDocumentId}`}>Open result</Link>
+                  )}
+                  {/* A new attempt with the same settings; history keeps this one. */}
+                  {job.status === 'FAILED' && toolsOffered && (
+                    <button
+                      type="button"
+                      className="bnd-link"
+                      disabled={isBusy}
+                      onClick={() =>
+                        void postJob({}, `/api/documents/${documentId}/jobs/${job.id}/retry`)
+                      }
+                    >
+                      Retry
+                    </button>
                   )}
                 </div>
               </li>

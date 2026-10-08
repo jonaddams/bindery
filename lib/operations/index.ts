@@ -60,6 +60,26 @@ export const operationsFor = (target: NutrientTarget): readonly DocumentOperatio
   DOCUMENT_OPERATIONS.filter((operation) => operation.backends.includes(target));
 
 /**
+ * Why no tool can run on this document, or null when tools can.
+ *
+ * A copy made by Password-protect cannot be read back without its password —
+ * DWS answers the download with 400 "Missing the 'pspdfkit-pdf-password'
+ * header" — so every job on it would fail at its first step. Saying so up front
+ * beats a job that fails with that header name. The original is never protected,
+ * so the reason points there.
+ */
+export const isProtectedCopy = (document: {
+  producedByJob: { kind: DocumentJobKind } | null;
+}): boolean => document.producedByJob?.kind === 'PROTECT';
+
+export const toolsUnavailableReason = (document: {
+  producedByJob: { kind: DocumentJobKind } | null;
+}): string | null =>
+  isProtectedCopy(document)
+    ? 'This is a password-protected copy, so tools cannot open it. Run them on the original instead.'
+    : null;
+
+/**
  * What one document is offered: the deployment's operations, less any that do
  * not apply to its type — converting a PDF to a PDF, for one. The page and the
  * jobs route both ask this, so the menu and what the route accepts cannot drift.

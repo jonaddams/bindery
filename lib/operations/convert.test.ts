@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { operationsForDocument } from '@/lib/operations';
+import { operationsForDocument, toolsUnavailableReason } from '@/lib/operations';
 import { convertOperation } from '@/lib/operations/convert';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -25,6 +25,21 @@ describe('Converting to PDF', () => {
     if (!result.ok) throw new Error(result.message);
 
     expect(result.outputSuffix).toBe('converted');
+  });
+});
+
+describe('A password-protected copy', () => {
+  // DWS will not hand the copy back without its password, so every job on it
+  // would fail at the download step.
+  it('cannot have tools run on it, and says why', () => {
+    expect(toolsUnavailableReason({ producedByJob: { kind: 'PROTECT' } })).toMatch(
+      /password-protected/i
+    );
+  });
+
+  it('does not stop tools on anything else', () => {
+    expect(toolsUnavailableReason({ producedByJob: { kind: 'COMPRESS' } })).toBeNull();
+    expect(toolsUnavailableReason({ producedByJob: null })).toBeNull();
   });
 });
 

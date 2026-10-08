@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { MentionFeed } = await import('@/components/mention-feed');
+const { onUnreadMentions } = await import('@/lib/unread-mentions');
 
 type Call = { url: string; method: string; body?: string };
 
@@ -117,6 +118,21 @@ describe('Marking read', () => {
     expect(JSON.parse(calls.filter((c) => c.method === 'POST')[0].body ?? '{}')).toEqual({
       mentionIds: ['mention_1'],
     });
+  });
+
+  // The nav's Inbox badge listens for this, so it stays in step without a reload.
+  it('tells the rest of the page how many are still unread', async () => {
+    feed = { mentions: [aMention(), aMention({ id: 'mention_2' })], unread: 2 };
+    const heard: number[] = [];
+    const stop = onUnreadMentions((count) => heard.push(count));
+    const user = userEvent.setup();
+    render(<MentionFeed variant="inbox" />);
+
+    await user.click((await screen.findAllByRole('button', { name: /^mark read$/i }))[0]);
+    await user.click(screen.getByRole('button', { name: /mark all read/i }));
+
+    expect(heard).toEqual([1, 0]);
+    stop();
   });
 
   it('marks everything read', async () => {

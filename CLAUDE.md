@@ -1674,6 +1674,29 @@ Added 2026-10-07.
   to the first document and sorting groups by their newest member. The list API
   must select `derivedFromId`; a test pins it.
 
+### Download, retry, and protected copies (2026-10-07)
+
+- **Downloads are streamed, never buffered.** Vercel caps a *buffered* function
+  response at 4.5 MB (`FUNCTION_PAYLOAD_TOO_LARGE`), the same limit that broke
+  uploads; its own guide says streamed responses "don't have this limit". So
+  `/api/documents/[id]/download` passes `provider.streamDocument()`'s stream
+  straight through. **Not yet proven on Vercel for a file over 4.5 MB** — local dev
+  has no such limit. Prove it once in production.
+- **DWS's `/pdf` endpoint returns a PDF rendering of an Office upload**, not the
+  original. Document Engine with `?source=true` returns the original. The download
+  route names the file for what the backend sent, so a DWS `.docx` downloads as
+  `.pdf`.
+- **A password-protected copy cannot be fetched server-side** without its
+  password. `isProtectedCopy` / `toolsUnavailableReason` in `lib/operations` are the
+  one rule: no Tools, no OCR suggestion, no app download, and the jobs, retry and
+  download routes refuse with the reason. The viewer still opens it and its own
+  download button saves it.
+- **Retry makes a new job** from the failed job's stored parameters, re-parsed, so
+  history keeps both attempts. A protect job whose sealed password can no longer
+  be opened is refused with that reason.
+- **The Inbox badge is kept in step by a window event** (`lib/unread-mentions.ts`),
+  announced by the feed when it marks mentions read.
+
 ### Running a dev server when other projects run theirs
 
 **Never stop a dev server with `pkill -f "next dev"`.** It matches every project's

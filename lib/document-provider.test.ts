@@ -266,6 +266,27 @@ describe.each([
     expect(part instanceof File && part.type).toBe(docx);
   });
 
+  // A download is streamed through, never buffered: Vercel caps a buffered
+  // function response at 4.5 MB, and streamed responses are exempt.
+  it('streams a stored document back with the type the backend sent', async () => {
+    mockFetch(
+      new Response(new Uint8Array([1, 2, 3]), { headers: { 'Content-Type': 'application/pdf' } })
+    );
+
+    const stored = await documentProvider().streamDocument({ documentId: 'doc_1' });
+
+    expect(stored.contentType).toBe('application/pdf');
+    expect(new Uint8Array(await new Response(stored.body).arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3])
+    );
+  });
+
+  it('reports a stored document the backend will not return', async () => {
+    mockFetch(new Response('nope', { status: 404 }));
+
+    await expect(documentProvider().streamDocument({ documentId: 'doc_1' })).rejects.toThrow(/404/);
+  });
+
   it('sends a PDF when the caller names no type', async () => {
     const fetchMock = mockFetch(new Response(new Uint8Array([1])));
 

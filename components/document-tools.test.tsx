@@ -21,6 +21,8 @@ type Job = {
   attempts: number;
   createdAt: string;
   finishedAt: string | null;
+  inputBytes?: number | null;
+  outputBytes?: number | null;
 };
 
 let calls: Call[] = [];
@@ -204,6 +206,22 @@ describe('Hearing that a job finished', () => {
   });
 });
 
+describe('A document tools cannot open', () => {
+  it('explains why instead of offering tools that would fail', async () => {
+    render(
+      <DocumentTools
+        documentId="doc_1"
+        canRunTools
+        operations={operations}
+        unavailableReason="This is a password-protected copy, so tools cannot open it."
+      />
+    );
+
+    expect(await screen.findByText(/password-protected copy/i)).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^tools/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('Moving between tools', () => {
   // With ten tools, being stuck on one form until the menu is closed and
   // reopened was found by using the page, not by a test.
@@ -377,6 +395,76 @@ describe('Watching a job run', () => {
 
     expect(await screen.findByText('OCR · German')).toBeVisible();
     expect(screen.getByText('Redact · Email addresses')).toBeVisible();
+  });
+
+  it('retries a failed job, showing the new attempt at once', async () => {
+    jobs = [aJob({ status: 'FAILED', description: 'OCR · German', error: 'timed out' })];
+    postResponse = {
+      ok: true,
+      status: 202,
+      body: { job: aJob({ id: 'job_2', status: 'PENDING', description: 'OCR · German' }) },
+    };
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+
+    expect(calls.filter((c) => c.method === 'POST').at(-1)?.url).toBe(
+      '/api/documents/doc_1/jobs/job_1/retry'
+    );
+    expect(await screen.findByText('Queued')).toBeVisible();
+  });
+
+  it('says why, when a retry is refused', async () => {
+    jobs = [aJob({ status: 'FAILED', error: 'timed out' })];
+    postResponse = {
+      ok: false,
+      status: 400,
+      body: { error: 'The password stored for this job can no longer be read.' },
+    };
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/can no longer be read/);
+  });
+
+  it('does not offer a retry to someone who may only read the document', async () => {
+    jobs = [aJob({ status: 'FAILED', error: 'timed out' })];
+    render(<DocumentTools documentId="doc_1" canRunTools={false} operations={operations} />);
+
+    await screen.findByText('timed out');
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
+
+  it('shows what a finished job did to the size of the file', async () => {
+    jobs = [
+      aJob({
+        status: 'SUCCEEDED',
+        description: 'Compress · Maximum',
+        outputDocumentId: 'doc_2',
+        inputBytes: 1_800_000,
+        outputBytes: 220_000,
+      }),
+    ];
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    expect(await screen.findByText('1.72 MB → 214.84 KB (−88%)')).toBeVisible();
+  });
+
+  // Growth is reported without a percentage: "+1,200%" for OCR adding a text
+  // layer would read as a warning.
+  it('shows a larger result without a percentage', async () => {
+    jobs = [
+      aJob({
+        status: 'SUCCEEDED',
+        outputDocumentId: 'doc_2',
+        inputBytes: 100_000,
+        outputBytes: 150_000,
+      }),
+    ];
+    render(<DocumentTools documentId="doc_1" canRunTools operations={operations} />);
+
+    expect(await screen.findByText('97.66 KB → 146.48 KB')).toBeVisible();
   });
 
   it('says so when nothing has been done yet', async () => {

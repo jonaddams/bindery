@@ -258,4 +258,16 @@ describe('Listing documents', () => {
       expect.objectContaining({ select: expect.objectContaining({ derivedFromId: true }) })
     );
   });
+
+  it('says which job made each copy, so a protected copy is not offered for download', async () => {
+    findManyDocuments.mockResolvedValue([]);
+
+    await GET(new Request('https://example.test/api/documents') as never);
+
+    expect(findManyDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ producedByJob: { select: { kind: true } } }),
+      })
+    );
+  });
 });

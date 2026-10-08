@@ -1,9 +1,10 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FrameSection } from '@/components/app-frame';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import type { SessionUser } from '@/lib/auth';
+import { announceUnreadMentions } from '@/lib/unread-mentions';
 
 vi.mock('@/lib/auth-client', () => ({ signOut: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -74,6 +75,20 @@ describe('App frame', () => {
     renderFrame();
 
     expect(await mainNav().findByRole('link', { name: 'Inbox, 3 unread' })).toBeInTheDocument();
+  });
+
+  // Marking mentions read on the Inbox page used to leave the badge stale
+  // until the next page load.
+  it('updates the count as soon as mentions are marked read', async () => {
+    stubMentions(3);
+    renderFrame();
+    await mainNav().findByRole('link', { name: 'Inbox, 3 unread' });
+
+    act(() => {
+      announceUnreadMentions(1);
+    });
+
+    expect(mainNav().getByRole('link', { name: 'Inbox, 1 unread' })).toBeInTheDocument();
   });
 
   it('shows no count when nothing is unread', async () => {
