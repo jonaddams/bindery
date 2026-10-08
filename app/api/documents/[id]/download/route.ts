@@ -3,15 +3,11 @@ import { getEffectiveDocumentFilter, requireAuth, type SessionUser } from '@/lib
 import { documentProvider } from '@/lib/document-provider';
 import { isProtectedCopy } from '@/lib/operations';
 import { prisma } from '@/lib/prisma';
+import { pdfFilename } from '@/lib/viewer-download';
 
 /** The stored name, with `.pdf` when the backend sent a PDF of something else. */
-const downloadName = (filename: string, sentType: string | null): string => {
-  if (sentType !== 'application/pdf' || /\.pdf$/i.test(filename)) {
-    return filename;
-  }
-  const extension = filename.lastIndexOf('.');
-  return `${extension > 0 ? filename.slice(0, extension) : filename}.pdf`;
-};
+const downloadName = (filename: string, sentType: string | null): string =>
+  sentType === 'application/pdf' ? pdfFilename(filename) : filename;
 
 /**
  * GET /api/documents/[id]/download

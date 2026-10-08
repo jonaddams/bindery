@@ -168,7 +168,7 @@ export default async function DocumentView({ params }: { params: Promise<Params>
         </div>
 
         <div className="bnd-doc">
-          <DocumentViewer documentId={document.id} />
+          <DocumentViewer documentId={document.id} filename={document.filename} />
 
           <aside className="bnd-rail">
             <DocumentTools
