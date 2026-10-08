@@ -31,7 +31,25 @@ declare global {
    * is not trusted to report who was mentioned — the event is a nudge to make the
    * server re-read DWS, nothing more — so nothing here should be tempted to read it.
    */
+  /**
+   * A main-toolbar item: a built-in one (`{ type: 'export-pdf' }`, …) or a custom
+   * one with its own `id`, `title`, SVG `icon` and `onPress`.
+   */
+  type NutrientToolbarItem = {
+    type: string;
+    id?: string;
+    title?: string;
+    icon?: string;
+    onPress?: () => void;
+    [key: string]: unknown;
+  };
+
   type NutrientViewerInstance = {
+    /** Saves pending changes. `exportPDF` omits anything not yet saved. */
+    save(): Promise<void>;
+    /** The document as a PDF, with saved annotations. */
+    exportPDF(): Promise<ArrayBuffer>;
+
     addEventListener(event: 'comments.mention', handler: (payload: unknown) => void): void;
     removeEventListener(event: 'comments.mention', handler: (payload: unknown) => void): void;
 
@@ -64,9 +82,12 @@ declare global {
         useCDN?: boolean; // Load assets from CDN instead of local. Requires viewer >= 1.9.1
         baseUrl?: string; // Custom base URL for self-hosted assets
         mentionableUsers?: NutrientMentionableUser[];
+        toolbarItems?: NutrientToolbarItem[];
         [key: string]: unknown;
       }): Promise<NutrientViewerInstance>;
       unload(container: HTMLElement): Promise<void>;
+      /** The toolbar the viewer shows by default, to adjust rather than rebuild. */
+      defaultToolbarItems: readonly NutrientToolbarItem[];
     };
   }
 }

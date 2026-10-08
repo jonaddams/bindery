@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BI } from '@/components/bindery/icons';
 import type { NutrientTarget } from '@/lib/nutrient-config';
+import { pdfFilename, saveFile, withNamedDownload } from '@/lib/viewer-download';
 import { viewerLoadOptions } from '@/lib/viewer-load-options';
 
 type DocumentViewerProps = {
   documentId: string;
+  /** The stored filename; the toolbar's download saves under it, as a PDF. */
+  filename: string;
 };
 
 type ViewerError = {
@@ -14,7 +17,7 @@ type ViewerError = {
   code?: string;
 };
 
-export function DocumentViewer({ documentId }: DocumentViewerProps) {
+export function DocumentViewer({ documentId, filename }: DocumentViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerInstanceRef = useRef<NutrientViewerInstance | null>(null);
   const isInitializingRef = useRef(false);
@@ -128,16 +131,40 @@ export function DocumentViewer({ documentId }: DocumentViewerProps) {
         throw new Error('Empty session token received from API');
       }
 
-      const instance = await window.NutrientViewer.load(
-        viewerLoadOptions({
+      // The built-in download button saves as "document.pdf" and cannot be
+      // renamed, so it is swapped for one that saves under this document's name.
+      // It reads the instance when pressed, which is long after load resolves.
+      const downloadNamed = async () => {
+        const viewer = viewerInstanceRef.current;
+        if (!viewer) return;
+        try {
+          // exportPDF omits unsaved annotations.
+          await viewer.save().catch(() => undefined);
+          saveFile({ bytes: await viewer.exportPDF(), filename: pdfFilename(filename) });
+        } catch (exportError) {
+          console.error('Could not export the document for download', exportError);
+        }
+      };
+      const defaults = window.NutrientViewer.defaultToolbarItems;
+
+      const instance = await window.NutrientViewer.load({
+        ...viewerLoadOptions({
           container: containerRef.current,
           target: viewerData.target,
           serverUrl: viewerData.serverUrl,
           documentId: viewerData.backendDocumentId,
           sessionToken: viewerData.sessionToken,
           mentionableUsers: viewerData.mentionableUsers,
-        })
-      );
+        }),
+        ...(Array.isArray(defaults)
+          ? {
+              toolbarItems: withNamedDownload({
+                items: defaults,
+                onDownload: () => void downloadNamed(),
+              }),
+            }
+          : {}),
+      });
 
       // Without this the reader's own comments are labelled "Anonymous". DWS
       // records the author from the session's `user_id` either way; this is the
@@ -158,7 +185,7 @@ export function DocumentViewer({ documentId }: DocumentViewerProps) {
     } finally {
       isInitializingRef.current = false;
     }
-  }, [viewerData, requestCommentSync]);
+  }, [viewerData, requestCommentSync, filename]);
 
   // Cleanup function
   const cleanup = useCallback(async () => {

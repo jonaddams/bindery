@@ -1698,6 +1698,12 @@ Added 2026-10-07.
   JWT; it rejects unknown names, `print` included — there is no separate print
   permission. Sessions are minted fresh on every view, so existing documents
   pick the change up immediately.
+- **The SDK's built-in `export-pdf` button always saves as `document.pdf`** and
+  has no option to name the file. It is replaced, in place, by a custom toolbar
+  item that calls `instance.save()` then `instance.exportPDF()` and saves under the
+  document's filename (`lib/viewer-download.ts`, the route's naming rule too). The
+  SDK's types here are hand-written in `global.d.ts`; add a member there when the
+  app starts using one.
 - **Retry makes a new job** from the failed job's stored parameters, re-parsed, so
   history keeps both attempts. A protect job whose sealed password can no longer
   be opened is refused with that reason.
